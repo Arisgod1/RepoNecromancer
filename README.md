@@ -20,6 +20,7 @@
   - [`necro autopsy`](#necro-autopsy)
   - [`necro report`](#necro-report)
   - [`necro reborn`](#necro-reborn)
+  - [`necro cache`](#necro-cache)
 - [Output Formats](#output-formats)
 - [Examples](#examples)
 
@@ -33,8 +34,10 @@
 - **AI-Enhanced Analysis** — Optional DashScope LLM integration for richer cause scoring and reincarnation planning
 - **Reincarnation Plans** — Structured 90-day revival blueprints with architecture recommendations, migration steps, risks, and milestones
 - **Extensible Tool Registry** — Built-in GitHub and web tools, plus custom extension loading
+- **Extension System** — Load custom tools at runtime; subscribe to lifecycle events (action:started, permission:decision, action:completed, session:completed, budget:warning)
 - **Permission Engine** — Configurable domain/IP allowlisting for safe tool execution
-- **Multiple Output Formats** — JSON and Markdown report artifacts
+- **Multiple Output Formats** — JSON, Markdown, and PDF report artifacts
+- **Failure Simulation Tests** — Test permission denial, budget exhaustion, cache degradation, and LLM fallback scenarios
 
 ---
 
@@ -66,7 +69,7 @@
                               │
                     ┌─────────▼──────────┐
                     │   LLM Client       │  ← DashScope (optional)
-                    │  (qwen3.6-plus)    │
+                    │  (qwen3.6-flash)   │
                     └────────────────────┘
 ```
 
@@ -81,7 +84,8 @@
 | **Network Client** | HTTP client with retry/backoff for tool execution |
 | **LLM Client** | DashScope API client for AI-enhanced cause scoring and reincarnation plans |
 | **Memory Store** | In-memory state management across command invocations |
-| **Report Renderer** | Generates JSON and Markdown artifact files |
+| **EventBus** | Pub/sub system for lifecycle event distribution to extensions |
+| **Report Renderer** | Generates JSON, Markdown, and PDF artifact files |
 
 ---
 
@@ -132,6 +136,7 @@ analysis:
   default_years: 3      # Default inactivity threshold for scans
   min_stars: 5000       # Minimum star count for candidate repos
   max_items: 500        # Maximum issues/PRs/commits to fetch
+  max_evidence: 250     # Maximum evidence items to collect for autopsy (max 2000)
 
 query:
   max_turns: 16         # Maximum tool-call turns in a session
@@ -155,7 +160,7 @@ tools:
   deny: []               # List of tool names to disable
 
 llm:
-  model: qwen3.6-plus
+  model: qwen3.6-flash
   api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
   timeout_seconds: 300
 ```
@@ -190,7 +195,7 @@ Environment variables override config file values. The prefix `NECRO_` is used f
 |----------|----------|-------------|
 | `GITHUB_TOKEN` | Recommended | GitHub Personal Access Token for API access. Without it, you hit lower rate limits. |
 | `DASHSCOPE_API_KEY` | Optional | DashScope API key for AI-enhanced analysis and reincarnation planning. |
-| `DASHSCOPE_MODEL` | No | Override the default LLM model (`qwen3.6-plus`). |
+| `DASHSCOPE_MODEL` | No | Override the default LLM model (`qwen3.6-flash`). |
 | `DASHSCOPE_API_BASE` | No | Override the DashScope API base URL. |
 | `NECRO_CONFIG` | No | Path to a custom YAML config file. |
 
@@ -349,6 +354,24 @@ necro autopsy <owner/repo> --years <N> [flags]
 | `--since` | string | No | Evidence lower bound (RFC3339 or `YYYY-MM-DD`) |
 | `--until` | string | No | Evidence upper bound (RFC3339 or `YYYY-MM-DD`) |
 | `--max-items` | int | No | Maximum issues/PRs/commits to fetch (default: 200) |
+| `--mode` | string | No | Fetch mode: `full` (default), `sample` (memory-efficient), `lite` (fast) |
+| `--max-evidence` | int | No | Maximum evidence items to collect (default: 250, max: 2000) |
+
+**Memory Modes:**
+
+| Mode | Description |
+|------|-------------|
+| `full` (default) | Fetch all issues, PRs, and commits — original behavior |
+| `sample` | Memory-efficient: fetches recent 2-year commits + issues/PRs, uses streaming min-heap to keep only top-N evidence |
+| `lite` | Fast mode: repository metadata only + recent 30 days activity, uses rule-based cause scoring |
+
+Sample mode output includes a sampling bias warning:
+
+```
+Mode: sample (memory-efficient, sampled 500 recent commits + recent 2yr issues/PRs)
+Evidence indexed: 250 (capped from ~3000 total)
+Sampling bias: Recent activity bias — historical patterns may be underrepresented
+```
 
 **Example:**
 
@@ -399,7 +422,7 @@ necro report <owner/repo> [flags]
 | Flag | Type | Required | Description |
 |------|------|----------|-------------|
 | `<owner/repo>` | string | Yes | Target repository |
-| `--format` | string | No | Output format: `markdown`, `json`, or `both` (default: `both`) |
+| `--format` | string | No | Output format: `markdown`, `json`, `pdf`, `pdf+markdown`, or `both` (default: `both`) |
 | `--out` | string | No | Output directory (default: `./out` from config) |
 | `--years` | int | No | Inactivity threshold (default: from config `analysis.default_years`) |
 | `--since` | string | No | Evidence lower bound |
@@ -419,7 +442,8 @@ necro report owner/repo-name --format both --target-stack "Rust + Actix + Postgr
 ```
 out/
 ├── report.json       # Full structured report with all fields
-├── report.md        # Human-readable Markdown summary
+├── report.md         # Human-readable Markdown summary
+├── report.pdf        # PDF export of the report
 └── evidence-index.json  # Indexed evidence items
 ```
 
@@ -474,6 +498,48 @@ Risks:
 - [high] Scope expansion beyond parity rewrite | stop-loss: Reject net-new features until parity baseline reaches 90%.
 - [medium] Migration churn destabilizes users | stop-loss: Run compatibility layer with telemetry.
 - [high] Maintainer bandwidth remains constrained | stop-loss: Define ownership map + rotate on-call before launch.
+```
+
+---
+
+### `necro cache`
+
+Manage the persistent file-backed TTL cache used for GitHub API responses.
+
+```bash
+necro cache <subcommand>
+```
+
+**Subcommands:**
+
+| Command | Description |
+|---------|-------------|
+| `necro cache stats` | Show cache statistics (total, active, expired keys) |
+| `necro cache list` | List all cached keys with their TTL status |
+| `necro cache clear` | Clear all cache entries |
+
+**TTL Policies:**
+
+| Response Type | TTL |
+|---------------|-----|
+| Normal entries (searches, issues, PRs, commits) | 5 minutes |
+| Successful GitHub repo lookups (HIT) | 2 minutes |
+| 404 dead repos | 1 hour |
+| Errors / rate limits | 5 minutes |
+
+The cache is file-backed (stored in `~/.cache/necro/` or the configured `cache_dir`) — so `necro cache` commands persist across CLI invocations.
+
+**Example:**
+
+```bash
+necro cache stats
+# Cache Statistics:
+#   Total keys:   12
+#   Active keys: 8
+#   Expired keys: 4
+
+necro cache clear --force
+# Cache cleared (12 entries removed).
 ```
 
 ---
