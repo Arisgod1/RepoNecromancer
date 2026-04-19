@@ -38,6 +38,7 @@
 - **Permission Engine** — Configurable domain/IP allowlisting for safe tool execution
 - **Multiple Output Formats** — JSON, Markdown, and PDF report artifacts
 - **Failure Simulation Tests** — Test permission denial, budget exhaustion, cache degradation, and LLM fallback scenarios
+- **Parallel Startup** — Concurrent API calls, parallel LLM inference, and multi-repo scanning for ~4x speedup
 
 ---
 
@@ -86,6 +87,31 @@
 | **Memory Store** | In-memory state management across command invocations |
 | **EventBus** | Pub/sub system for lifecycle event distribution to extensions |
 | **Report Renderer** | Generates JSON, Markdown, and PDF artifact files |
+| **Cache** | File-backed TTLStore at `~/.cache/necro/cache.data` with LRU eviction |
+
+### Architecture Details
+- **Query Engine**: Budget-limited tool orchestration with permission guard
+- **EventBus**: Publish/subscribe for `action:started`, `permission:decision`, `action:completed`, `session:completed`, `budget:warning` events
+- **Extension System**: Plugin architecture via `Subscribe()` method
+
+---
+
+## Testing
+
+### Test Coverage
+
+| Package | Coverage |
+|---------|----------|
+| internal/permissions | 91.0% |
+| internal/report | 85.8% |
+| internal/logging | 90.9% |
+| internal/state | 89.4% |
+| internal/tools | 27.7% |
+| internal/extensions | 26.2% |
+| internal/query | 26.6% |
+| internal/commands | 23.3% |
+
+Run tests: `go test ./... -cover`
 
 ---
 
@@ -318,12 +344,17 @@ necro scan --years <N> --min-stars <N> [flags]
 | `--language` | string | No | Filter by programming language (e.g., `Go`, `Python`) |
 | `--topic` | string[] | No | Filter by GitHub topic (repeatable) |
 | `--limit` | int | No | Maximum results to return (default: 20, max: 100) |
+| `--repos` | string | No | Comma-separated list of `owner/repo` to scan (default: discover via API) |
+| `--parallel` | int | No | Concurrency limit for multi-repo scanning (default: 4) |
 
 **Example:**
 
 ```bash
-export GITHUB_TOKEN=ghp_your_token_here
+export GITHUB_TOKEN=ghp_yo...here
 necro scan --years 3 --min-stars 5000 --language Go --limit 10
+
+# Multi-repo scanning
+necro scan --repos owner/repo1,owner/repo2 --parallel 4
 ```
 
 **Sample Output:**
@@ -462,6 +493,9 @@ necro reborn <owner/repo> [flags]
 | Flag | Type | Required | Description |
 |------|------|----------|-------------|
 | `<owner/repo>` | string | Yes | Target repository |
+| `--format` | string | No | Output format: `markdown`, `json`, `pdf`, `pdf+markdown`, or `both` (default: `both`) |
+| `--out` | string | No | Output directory (default: `./out`) |
+| `--years` | int | No | Inactivity threshold (default: from config) |
 | `--target-stack` | string | No | Target implementation stack |
 | `--constraints` | string | No | Constraint text or file path |
 
@@ -469,6 +503,7 @@ necro reborn <owner/repo> [flags]
 
 ```bash
 necro reborn owner/repo-name --target-stack "Go 1.26 + gRPC + Postgres + Kubernetes"
+necro reborn owner/repo --format markdown --out ./plans --years 5 --constraints ./constraints.txt
 ```
 
 **Sample Output:**

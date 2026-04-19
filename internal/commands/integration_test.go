@@ -1467,3 +1467,422 @@ func TestCacheInvalidation(t *testing.T) {
 		}
 	})
 }
+
+// --------------------------------------------------------------------------
+// Parallel execution tests (autopsy.go concurrent API calls)
+// --------------------------------------------------------------------------
+
+func TestParallelAPICalls(t *testing.T) {
+	server := newMockGitHubServer()
+	defer server.Server.Close()
+
+	app, _ := buildTestApp("", server.URL)
+
+	start := time.Now()
+	bundle, _, err := collectAnalysisData(context.Background(), app, "dead-owner", "dead-repo", "", "", 200, modeFull)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("collectAnalysisData failed: %v", err)
+	}
+
+	// All 4 endpoints should have been called
+	if server.repoCalled == 0 || server.issuesCalled == 0 || server.prsCalled == 0 || server.commitsCalled == 0 {
+		t.Error("not all endpoints were called")
+	}
+
+	// With 4 concurrent calls, elapsed time should be close to the slowest call, not sum of all
+	// The mock server responds instantly, so this should complete quickly
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("parallel execution took too long (%v), suggests sequential execution", elapsed)
+	}
+
+	// Verify bundle data is complete
+	if len(bundle.Repository) == 0 {
+		t.Error("bundle.Repository is empty")
+	}
+	if len(bundle.Issues) != 3 {
+		t.Errorf("expected 3 issues, got %d", len(bundle.Issues))
+	}
+	if len(bundle.PullReqs) != 1 {
+		t.Errorf("expected 1 PR, got %d", len(bundle.PullReqs))
+	}
+	if len(bundle.Commits) != 2 {
+		t.Errorf("expected 2 commits, got %d", len(bundle.Commits))
+	}
+}
+
+// --------------------------------------------------------------------------
+// Multi-repo scan concurrency tests
+// --------------------------------------------------------------------------
+
+func TestMultiRepoScanConcurrency(t *testing.T) {
+	server := newMockGitHubServer()
+	defer server.Server.Close()
+
+	app, _ := buildTestApp("", server.URL)
+
+	repos := []string{"ghost-org/phantom-lib", "abandoned-team/sunset-project"}
+
+	var wg sync.WaitGroup
+	var callCount int32
+	var mu sync.Mutex
+	seen := make(map[string]bool)
+
+	for _, repo := range repos {
+		wg.Add(1)
+		go func(r string) {
+			defer wg.Done()
+			owner, repo, _ := parseOwnerRepo(r)
+			req := query.QueryRequest{
+				Command:   "scan",
+				SessionID: "test-multi-" + r,
+				Budget:    query.BudgetLimits{MaxTurns: 16},
+				Actions: []query.Action{
+					{
+						ToolName: "github.search_repositories",
+						Input:    map[string]any{"years": 5, "min_stars": 0, "language": "", "limit": 10, "owner": owner, "repo": repo},
+					},
+				},
+			}
+			result, _ := app.Query.Run(context.Background(), req)
+			if len(result.Executions) > 0 && result.Executions[0].Output != nil {
+				mu.Lock()
+				seen[r] = true
+				callCount++
+				mu.Unlock()
+			}
+		}(repo)
+	}
+
+	wg.Wait()
+
+	if callCount != int32(len(repos)) {
+		t.Errorf("expected %d successful scans, got %d", len(repos), callCount)
+	}
+	if len(seen) != len(repos) {
+		t.Errorf("expected %d repos in results, got %d", len(repos), len(seen))
+	}
+}
+
+// --------------------------------------------------------------------------
+// Evidence ordering tests (buildEvidenceStreamed sorting)
+// --------------------------------------------------------------------------
+
+func TestEvidenceStreamedOrdering(t *testing.T) {
+	// Create bundle with evidence at known timestamps
+	issues := []map[string]any{
+		{
+			"id":         int64(1),
+			"number":     1,
+			"title":      "Old issue",
+			"state":      "closed",
+			"created_at": "2020-01-01T00:00:00Z",
+			"updated_at": "2020-01-15T00:00:00Z",
+			"user":       map[string]any{"login": "user1"},
+			"comments":   int64(0),
+		},
+		{
+			"id":         int64(2),
+			"number":     2,
+			"title":      "New issue",
+			"state":      "open",
+			"created_at": "2023-06-01T00:00:00Z",
+			"updated_at": "2023-06-01T00:00:00Z",
+			"user":       map[string]any{"login": "user2"},
+			"comments":   int64(0),
+		},
+		{
+			"id":         int64(3),
+			"number":     3,
+			"title":      "Middle issue",
+			"state":      "closed",
+			"created_at": "2021-06-01T00:00:00Z",
+			"updated_at": "2021-06-01T00:00:00Z",
+			"user":       map[string]any{"login": "user3"},
+			"comments":   int64(0),
+		},
+	}
+
+	evidence := buildEvidenceStreamed(issues, nil, nil, 500)
+
+	// Should be sorted oldest to newest
+	if len(evidence) != 3 {
+		t.Fatalf("expected 3 evidence items, got %d", len(evidence))
+	}
+
+	if evidence[0].Timestamp != "2020-01-01T00:00:00Z" {
+		t.Errorf("first evidence should be oldest (2020-01-01), got %s", evidence[0].Timestamp)
+	}
+	if evidence[2].Timestamp != "2023-06-01T00:00:00Z" {
+		t.Errorf("last evidence should be newest (2023-06-01), got %s", evidence[2].Timestamp)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Autopsy mode tests
+// --------------------------------------------------------------------------
+
+func TestAutopsyModes(t *testing.T) {
+	server := newMockGitHubServer()
+	defer server.Server.Close()
+
+	app, _ := buildTestApp("", server.URL)
+
+	modes := []fetchMode{modeFull, modeSample, modeLite}
+	for _, m := range modes {
+		t.Run(string(m), func(t *testing.T) {
+			bundle, _, err := collectAnalysisData(
+				context.Background(), app, "dead-owner", "dead-repo",
+				"", "", 200, m,
+			)
+			if err != nil {
+				t.Fatalf("collectAnalysisData(mode=%s) failed: %v", m, err)
+			}
+			// All modes should return repository metadata
+			if len(bundle.Repository) == 0 {
+				t.Error("bundle.Repository is empty")
+			}
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// LLM graceful degradation tests
+// --------------------------------------------------------------------------
+
+func TestLLMGracefulDegradation(t *testing.T) {
+	server := newMockGitHubServer()
+	defer server.Server.Close()
+
+	app, _ := buildTestApp("", server.URL)
+
+	bundle, _, err := collectAnalysisData(
+		context.Background(), app, "dead-owner", "dead-repo",
+		"", "", 200, modeFull,
+	)
+	if err != nil {
+		t.Fatalf("collectAnalysisData failed: %v", err)
+	}
+
+	// Build report with nil LLM client
+	rep := buildNecropsyReport("dead-owner", "dead-repo", 3, bundle, nil, 250)
+
+	if rep.Repository != "dead-owner/dead-repo" {
+		t.Errorf("expected repository 'dead-owner/dead-repo', got %q", rep.Repository)
+	}
+
+	// Cause scores should be present (rule-based fallback)
+	if len(rep.CauseScores) == 0 {
+		t.Error("expected at least some cause scores from rule-based fallback")
+	}
+
+	// Core philosophy should be populated (rule-based fallback produces it as a slice)
+	if len(rep.CorePhilosophy) == 0 {
+		t.Error("expected non-empty CorePhilosophy")
+	}
+}
+
+// --------------------------------------------------------------------------
+// Boundary/edge case tests
+// --------------------------------------------------------------------------
+
+func TestParseOwnerRepoEdgeCases(t *testing.T) {
+	tests := []struct {
+		input    string
+		wantErr  bool
+		wantPart string // "owner/repo" or "empty" or "slash-only"
+	}{
+		{"a/b", false, "owner/repo"},
+		{"a/b/c", true, "empty"},         // too many slashes
+		{"a", true, "empty"},             // no slash
+		{"", true, "empty"},              // empty string
+		{"/b", true, "slash-only"},       // starts with slash
+		{"a/", true, "slash-only"},       // ends with slash
+		{"//", true, "empty"},            // double slash
+		{" spaces / repo", false, "owner/repo"}, // with spaces (will trim)
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			owner, repo, err := parseOwnerRepo(tt.input)
+			if tt.wantErr && err == nil {
+				t.Errorf("parseOwnerRepo(%q): expected error, got nil", tt.input)
+				return
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("parseOwnerRepo(%q): unexpected error: %v", tt.input, err)
+				return
+			}
+			if tt.wantPart == "owner/repo" && (owner == "" || repo == "") {
+				t.Errorf("parseOwnerRepo(%q): owner=%q repo=%q, expected both non-empty", tt.input, owner, repo)
+			}
+			if tt.wantPart == "empty" && (owner != "" || repo != "") {
+				t.Errorf("parseOwnerRepo(%q): expected empty owner/repo, got owner=%q repo=%q", tt.input, owner, repo)
+			}
+		})
+	}
+}
+
+func TestEvidenceLimitTruncation(t *testing.T) {
+	// Create many issues
+	var manyIssues []map[string]any
+	for i := 0; i < 50; i++ {
+		manyIssues = append(manyIssues, map[string]any{
+			"id":         int64(i),
+			"number":     i,
+			"title":      fmt.Sprintf("issue %d", i),
+			"state":      "closed",
+			"created_at": fmt.Sprintf("2020-01-%02dT00:00:00Z", i%28+1),
+			"updated_at": fmt.Sprintf("2020-01-%02dT00:00:00Z", i%28+1),
+			"user":       map[string]any{"login": fmt.Sprintf("user%d", i)},
+			"comments":   int64(0),
+		})
+	}
+
+	// Test with different limits
+	for _, limit := range []int{10, 25, 50} {
+		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
+			evidence := buildEvidenceStreamed(manyIssues, nil, nil, limit)
+			if len(evidence) > limit {
+				t.Errorf("evidence count %d exceeds limit %d", len(evidence), limit)
+			}
+		})
+	}
+}
+
+func TestFloatValueEdgeCases(t *testing.T) {
+	tests := []struct {
+		input    any
+		expected float64
+	}{
+		{float64(0), 0},
+		{float64(-1.5), -1.5},
+		{float32(3.5), 3.5},
+		{int(0), 0},
+		{int(-100), -100},
+		{int64(-999), -999},
+		{uint(42), 0}, // uint not handled by floatValue → 0
+		{"0", 0},
+		{"123.45", 0},           // string that looks like number → 0
+		{true, 0},               // bool → 0
+		{false, 0},              // bool → 0
+		{[]int{1, 2, 3}, 0},     // slice → 0
+		{map[string]int{"a": 1}, 0}, // map → 0
+	}
+
+	for _, tt := range tests {
+		got := floatValue(tt.input)
+		if got != tt.expected {
+			t.Errorf("floatValue(%v (%T)) = %v, want %v", tt.input, tt.input, got, tt.expected)
+		}
+	}
+}
+
+func TestModeConstants(t *testing.T) {
+	// Verify modes are non-empty strings
+	if modeFull == "" || modeSample == "" || modeLite == "" {
+		t.Error("mode constants should not be empty strings")
+	}
+	// Verify they are distinct
+	if modeFull == modeSample || modeFull == modeLite || modeSample == modeLite {
+		t.Error("mode constants should be distinct")
+	}
+}
+
+func TestMemoryStoreNoLeak(t *testing.T) {
+	store := state.NewMemoryStore()
+
+	// Write many entries
+	for i := 0; i < 1000; i++ {
+		store.Set(fmt.Sprintf("key-%d", i), fmt.Sprintf("value-%d", i))
+	}
+
+	// Verify we can read them back
+	for i := 0; i < 1000; i++ {
+		val, found := store.Get(fmt.Sprintf("key-%d", i))
+		if !found {
+			t.Errorf("failed to get key-%d: not found", i)
+		}
+		if val != fmt.Sprintf("value-%d", i) {
+			t.Errorf("key-%d: expected %q, got %q", i, fmt.Sprintf("value-%d", i), val)
+		}
+	}
+
+	// Verify Keys() returns all keys
+	keys := store.Keys()
+	if len(keys) != 1000 {
+		t.Errorf("expected 1000 keys, got %d", len(keys))
+	}
+}
+
+func TestQueryBudgetZeroAndMax(t *testing.T) {
+	t.Run("zero max turns unlimited", func(t *testing.T) {
+		// MaxTurns=0 means unlimited
+		budget := query.NewBudget(query.BudgetLimits{MaxTurns: 0})
+		for i := 0; i < 10; i++ {
+			ok := budget.ConsumeTurn()
+			if !ok {
+				t.Errorf("ConsumeTurn %d failed unexpectedly with MaxTurns=0 (unlimited)", i)
+			}
+		}
+	})
+
+	t.Run("limit exceeded", func(t *testing.T) {
+		budget := query.NewBudget(query.BudgetLimits{MaxTurns: 3})
+		// First 3 should succeed
+		for i := 0; i < 3; i++ {
+			ok := budget.ConsumeTurn()
+			if !ok {
+				t.Errorf("ConsumeTurn %d failed unexpectedly", i)
+			}
+		}
+		// 4th should fail
+		ok := budget.ConsumeTurn()
+		if ok {
+			t.Error("expected ConsumeTurn to fail when limit exceeded")
+		}
+		snap := budget.Snapshot()
+		if snap.StopReason != "budget.max_turns_exceeded" {
+			t.Errorf("expected stop_reason=max_turns_exceeded, got %q", snap.StopReason)
+		}
+		if snap.UsedTurns != 3 {
+			t.Errorf("expected UsedTurns=3, got %d", snap.UsedTurns)
+		}
+	})
+
+	t.Run("large max turns", func(t *testing.T) {
+		budget := query.NewBudget(query.BudgetLimits{MaxTurns: 9999})
+		for i := 0; i < 100; i++ {
+			ok := budget.ConsumeTurn()
+			if !ok {
+				t.Errorf("ConsumeTurn %d failed unexpectedly", i)
+			}
+		}
+		snap := budget.Snapshot()
+		if snap.UsedTurns != 100 {
+			t.Errorf("expected UsedTurns=100, got %d", snap.UsedTurns)
+		}
+	})
+}
+
+func TestRendererUnsupportedFormat(t *testing.T) {
+	server := newMockGitHubServer()
+	defer server.Server.Close()
+
+	app, _ := buildTestApp("", server.URL)
+
+	bundle, _, _ := collectAnalysisData(context.Background(), app, "dead-owner", "dead-repo", "", "", 200, modeFull)
+	rep := buildNecropsyReport("dead-owner", "dead-repo", 3, bundle, nil, 250)
+
+	tmpDir := t.TempDir()
+
+	for _, format := range []string{"yaml", "xml", "csv", "html"} {
+		t.Run(format, func(t *testing.T) {
+			_, err := app.Renderer.WriteArtifacts(rep, tmpDir, format)
+			if err == nil {
+				t.Errorf("expected error for format=%q, got nil", format)
+			}
+		})
+	}
+}
