@@ -1335,7 +1335,7 @@ func TestLLMFallback(t *testing.T) {
 
 func TestCacheInvalidation(t *testing.T) {
 	t.Run("TTL expiration removes entry after TTL", func(t *testing.T) {
-		cache := tools.NewTTLStore()
+		cache := tools.NewTTLStore(t.TempDir())
 		cache.SetWithTTL("key1", "value1", 50*time.Millisecond)
 
 		// Should exist immediately
@@ -1358,7 +1358,7 @@ func TestCacheInvalidation(t *testing.T) {
 	})
 
 	t.Run("Delete removes entry immediately", func(t *testing.T) {
-		cache := tools.NewTTLStore()
+		cache := tools.NewTTLStore(t.TempDir())
 		cache.SetWithTTL("key1", "value1", 1*time.Hour)
 		cache.SetWithTTL("key2", "value2", 1*time.Hour)
 
@@ -1380,7 +1380,7 @@ func TestCacheInvalidation(t *testing.T) {
 	})
 
 	t.Run("Clear removes all entries", func(t *testing.T) {
-		cache := tools.NewTTLStore()
+		cache := tools.NewTTLStore(t.TempDir())
 		cache.SetWithTTL("key1", "value1", 1*time.Hour)
 		cache.SetWithTTL("key2", "value2", 1*time.Hour)
 		cache.SetWithTTL("key3", "value3", 1*time.Hour)
@@ -1407,7 +1407,7 @@ func TestCacheInvalidation(t *testing.T) {
 	})
 
 	t.Run("Stats accuracy", func(t *testing.T) {
-		cache := tools.NewTTLStore()
+		cache := tools.NewTTLStore(t.TempDir())
 		// Active entries
 		cache.SetWithTTL("active1", "v1", 1*time.Hour)
 		cache.SetWithTTL("active2", "v2", 1*time.Hour)
@@ -1434,7 +1434,7 @@ func TestCacheInvalidation(t *testing.T) {
 	})
 
 	t.Run("Get on non-existent key returns false", func(t *testing.T) {
-		cache := tools.NewTTLStore()
+		cache := tools.NewTTLStore(t.TempDir())
 		_, ok := cache.Get("nonexistent")
 		if ok {
 			t.Error("expected Get on nonexistent key to return false")
@@ -1442,12 +1442,12 @@ func TestCacheInvalidation(t *testing.T) {
 	})
 
 	t.Run("Delete on non-existent key is no-op", func(t *testing.T) {
-		cache := tools.NewTTLStore()
+		cache := tools.NewTTLStore(t.TempDir())
 		cache.Delete("nonexistent") // should not panic
 	})
 
 	t.Run("Keys returns only non-expired keys", func(t *testing.T) {
-		cache := tools.NewTTLStore()
+		cache := tools.NewTTLStore(t.TempDir())
 		cache.SetWithTTL("active1", "v1", 1*time.Hour)
 		cache.SetWithTTL("active2", "v2", 1*time.Hour)
 		cache.SetWithTTL("willExpire", "v3", 1*time.Millisecond)

@@ -42,7 +42,12 @@ func newCacheStatsCommand() *cobra.Command {
 		Use:   "stats",
 		Short: "Show cache statistics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stats := tools.GlobalCache().Stats()
+			gc := tools.GlobalCache()
+			if gc == nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "GlobalCache() is NIL\n")
+				return nil
+			}
+			stats := gc.Stats()
 			fmt.Fprintf(cmd.OutOrStdout(), "Cache Statistics:\n")
 			fmt.Fprintf(cmd.OutOrStdout(), "  Total keys:   %d\n", stats.TotalKeys)
 			fmt.Fprintf(cmd.OutOrStdout(), "  Active keys: %d\n", stats.ActiveKeys)

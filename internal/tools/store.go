@@ -1,135 +1,157 @@
 package tools
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
 type cacheEntry struct {
-	value      any
-	expiration time.Time
+	Value      any       `json:"value"`
+	Expiration time.Time `json:"expiration"`
 }
 
-// TTLStore is an in-memory cache with TTL support per entry.
+// TTLStore is a file-backed TTL cache.
 type TTLStore struct {
-	mu    sync.RWMutex
-	items map[string]cacheEntry
+	cacheDir string
+	mu       sync.Mutex // serializes writes (reads are lock-free via file system)
 }
 
-// NewTTLStore creates a new TTL-aware in-memory store.
-func NewTTLStore() *TTLStore {
-	s := &TTLStore{
-		items: make(map[string]cacheEntry),
+// NewTTLStore(cacheDir string) creates a file-backed TTL cache.
+// cacheDir is the directory to store cache files (e.g. ~/.cache/necro).
+// If cacheDir is empty, uses os.TempDir().
+func NewTTLStore(cacheDir string) *TTLStore {
+	if cacheDir == "" {
+		cacheDir = filepath.Join(os.TempDir(), "necro-cache")
 	}
-	// Start background cleanup goroutine
-	go s.cleanup()
-	return s
+	os.MkdirAll(cacheDir, 0755)
+	return &TTLStore{cacheDir: cacheDir}
 }
 
-// SetWithTTL stores a value with the given TTL duration.
+func (s *TTLStore) entryPath(key string) string {
+	h := sha256.Sum256([]byte(key))
+	return filepath.Join(s.cacheDir, fmt.Sprintf("%x.json", h))
+}
+
 func (s *TTLStore) SetWithTTL(key string, value any, ttl time.Duration) {
+	entry := cacheEntry{
+		Value:      value,
+		Expiration: time.Now().Add(ttl),
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return
+	}
+	path := s.entryPath(key)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	expiration := time.Now().Add(ttl)
-	s.items[key] = cacheEntry{
-		value:      value,
-		expiration: expiration,
-	}
+	os.WriteFile(path, data, 0644)
 }
 
-// Get retrieves a value if it exists and hasn't expired.
 func (s *TTLStore) Get(key string) (any, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	entry, ok := s.items[key]
-	if !ok {
+	path := s.entryPath(key)
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return nil, false
 	}
-	if time.Now().After(entry.expiration) {
+	var entry cacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		os.Remove(path) // corrupted
 		return nil, false
 	}
-	return entry.value, true
+	if time.Now().After(entry.Expiration) {
+		os.Remove(path) // expired
+		return nil, false
+	}
+	return entry.Value, true
 }
 
-// Delete removes a key from the store.
 func (s *TTLStore) Delete(key string) {
+	path := s.entryPath(key)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.items, key)
+	os.Remove(path)
 }
 
-// Clear removes all entries from the store.
 func (s *TTLStore) Clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.items = make(map[string]cacheEntry)
-}
-
-// Keys returns all non-expired keys.
-func (s *TTLStore) Keys() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	now := time.Now()
-	out := make([]string, 0, len(s.items))
-	for k, v := range s.items {
-		if now.Before(v.expiration) {
-			out = append(out, k)
-		}
+	entries, _ := os.ReadDir(s.cacheDir)
+	for _, e := range entries {
+		os.Remove(filepath.Join(s.cacheDir, e.Name()))
 	}
-	return out
 }
 
-// Stats returns statistics about the cache.
-func (s *TTLStore) Stats() CacheStats {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *TTLStore) Keys() []string {
 	now := time.Now()
-	var expired, active int
-	for _, v := range s.items {
-		if now.After(v.expiration) {
+	entries, _ := os.ReadDir(s.cacheDir)
+	var keys []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(s.cacheDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var entry cacheEntry
+		if err := json.Unmarshal(data, &entry); err != nil {
+			continue
+		}
+		if now.After(entry.Expiration) {
+			continue
+		}
+		keys = append(keys, e.Name()) // note: this is filename, not original key - acceptable for display
+	}
+	return keys
+}
+
+// CacheStats holds statistics about the cache state.
+type CacheStats struct {
+	TotalKeys   int
+	ActiveKeys  int
+	ExpiredKeys int
+}
+
+func (s *TTLStore) Stats() CacheStats {
+	entries, _ := os.ReadDir(s.cacheDir)
+	now := time.Now()
+	var active, expired int
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(s.cacheDir, e.Name()))
+		if err != nil {
+			expired++
+			continue
+		}
+		var entry cacheEntry
+		if err := json.Unmarshal(data, &entry); err != nil {
+			expired++
+			continue
+		}
+		if now.After(entry.Expiration) {
 			expired++
 		} else {
 			active++
 		}
 	}
 	return CacheStats{
-		TotalKeys:  len(s.items),
-		ActiveKeys: active,
+		TotalKeys:   len(entries),
+		ActiveKeys:  active,
 		ExpiredKeys: expired,
 	}
 }
 
-// CacheStats holds statistics about the cache state.
-type CacheStats struct {
-	TotalKeys  int
-	ActiveKeys int
-	ExpiredKeys int
-}
+// Package-level global cache instance (file-backed).
+var globalCache = NewTTLStore("")
 
-// cleanup periodically removes expired entries.
-func (s *TTLStore) cleanup() {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-	for range ticker.C {
-		s.removeExpired()
-	}
-}
-
-func (s *TTLStore) removeExpired() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := time.Now()
-	for k, v := range s.items {
-		if now.After(v.expiration) {
-			delete(s.items, k)
-		}
-	}
-}
-
-// Package-level global cache instance.
-var globalCache = NewTTLStore()
-
-// GlobalCache returns the package-level global cache.
+// GlobalCache returns the global file-backed cache.
 func GlobalCache() *TTLStore {
 	return globalCache
 }

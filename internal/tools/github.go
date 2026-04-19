@@ -73,9 +73,9 @@ func (t *githubSearchRepositoriesTool) Run(ctx context.Context, input map[string
 		limit = 100
 	}
 
-	// Build cache key from search parameters
 	cacheKey := fmt.Sprintf("github:search:years=%d,minStars=%d,limit=%d,lang=%s,topics=%v",
 		years, minStars, limit, language, topics)
+// Build cache key from search parameters
 	if cached, ok := GlobalCache().Get(cacheKey); ok {
 		return cached.(map[string]any), nil
 	}
@@ -120,6 +120,7 @@ func (t *githubSearchRepositoriesTool) Run(ctx context.Context, input map[string
 		"repositories": repos,
 	}
 	GlobalCache().SetWithTTL(cacheKey, result, TTLNormal)
+	// Build cache key from search parameters
 	return result, nil
 }
 
