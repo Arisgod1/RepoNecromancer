@@ -819,12 +819,12 @@ func TestReportEndToEnd(t *testing.T) {
 		expectErr    bool
 	}{
 		{
-			name:        "format=both creates markdown json and evidence",
+			name:        "format=both creates markdown json pdf and evidence",
 			owner:       "dead-owner",
 			repo:        "dead-repo",
 			format:      "both",
-			expectFiles: 3, // report.md, report.json, evidence-index.json
-			expectMD:   true,
+			expectFiles: 4, // report.md, report.json, report.pdf, evidence-index.json
+			expectMD:    true,
 			expectJSON:  true,
 			expectEvid:  true,
 			expectErr:   false,
@@ -855,7 +855,7 @@ func TestReportEndToEnd(t *testing.T) {
 			name:        "unsupported format returns error",
 			owner:       "dead-owner",
 			repo:        "dead-repo",
-			format:      "pdf",
+			format:      "xml",
 			expectFiles: 0,
 			expectErr:   true,
 		},

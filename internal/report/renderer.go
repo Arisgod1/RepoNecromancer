@@ -1,11 +1,14 @@
 package report
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/jung-kurt/gofpdf"
 )
 
 type Renderer struct{}
@@ -80,6 +83,134 @@ func (r *Renderer) RenderJSON(rep NecropsyReport) ([]byte, error) {
 	return json.MarshalIndent(rep, "", "  ")
 }
 
+func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(15, 15, 15)
+	pdf.AddPage()
+
+	// Title
+	pdf.SetFont("Arial", "B", 18)
+	pdf.MultiCell(0, 10, "验尸报告与转世方案", "", "C", false)
+	pdf.Ln(5)
+
+	// Section 1: Project profile
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "1. Project profile")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 5, fmt.Sprintf("Repository: %s", rep.Repository))
+	pdf.Ln(5)
+	pdf.Cell(0, 5, fmt.Sprintf("Snapshot date: %s", rep.SnapshotDate))
+	pdf.Ln(5)
+	pdf.Cell(0, 5, fmt.Sprintf("Stars: %d", rep.Stars))
+	pdf.Ln(5)
+	pdf.Cell(0, 5, fmt.Sprintf("Last commit at: %s", rep.LastCommitAt))
+	pdf.Ln(6)
+
+	// Section 2: Death qualification criteria
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "2. Death qualification criteria")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 5, fmt.Sprintf("Inactivity threshold (years): %d", rep.DeathThresholdYears))
+	pdf.Ln(6)
+
+	// Section 3: Evidence index
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "3. Evidence index")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 9)
+	for _, e := range rep.Evidence {
+		pdf.Cell(0, 5, fmt.Sprintf("- [%s] %s (%s) %s", e.ID, e.Title, e.Type, e.URL))
+		pdf.Ln(5)
+	}
+	pdf.Ln(4)
+
+	// Section 4: Timeline
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "4. Timeline and turning points")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 9)
+	for _, ev := range rep.Timeline {
+		pdf.Cell(0, 5, fmt.Sprintf("- %s: %s -- %s (ref: %s)", ev.Timestamp, ev.Title, ev.Description, ev.SourceRef))
+		pdf.Ln(5)
+	}
+	pdf.Ln(4)
+
+	// Section 5: Cause analysis
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "5. Cause analysis")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 9)
+	for _, c := range rep.CauseScores {
+		pdf.Cell(0, 5, fmt.Sprintf("- %s: score=%.2f confidence=%.2f", c.Label, c.Score, c.Confidence))
+		pdf.Ln(5)
+	}
+	pdf.Ln(4)
+
+	// Section 6: Core philosophy
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "6. Core philosophy extraction")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 10)
+	for _, p := range rep.CorePhilosophy {
+		pdf.Cell(0, 5, fmt.Sprintf("- %s", p))
+		pdf.Ln(5)
+	}
+	pdf.Ln(4)
+
+	// Section 7: Reincarnation architecture
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "7. 2026 reincarnation architecture")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 5, fmt.Sprintf("Target stack: %s", rep.ReincarnationPlan.TargetStack))
+	pdf.Ln(5)
+	for _, layer := range rep.ReincarnationPlan.Architecture {
+		pdf.Cell(0, 5, fmt.Sprintf("- %s", layer))
+		pdf.Ln(5)
+	}
+	pdf.Ln(4)
+
+	// Section 8: 90-day roadmap
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "8. 90-day implementation roadmap")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 9)
+	for _, m := range rep.Next90Days {
+		pdf.Cell(0, 5, fmt.Sprintf("- %s: %s (%s)", m.DayRange, m.Objective, strings.Join(m.Deliverables, ", ")))
+		pdf.Ln(5)
+	}
+	pdf.Ln(4)
+
+	// Section 9: Risks
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "9. Risks and stop-loss actions")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 9)
+	for _, rk := range rep.Risks {
+		pdf.Cell(0, 5, fmt.Sprintf("- [%s] %s -- stop-loss: %s", rk.Severity, rk.Title, rk.StopLossAction))
+		pdf.Ln(5)
+	}
+	pdf.Ln(4)
+
+	// Section 10: Attribution
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(0, 8, "10. Method and source attribution")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 6, "Sources include GitHub metadata/issues/PRs/commits and permission-gated network tools.")
+	pdf.Ln(6)
+	pdf.Cell(0, 6, "All evidence entries include URL/time traceability.")
+
+	var buf bytes.Buffer
+	err := pdf.Output(&buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]string, error) {
 	if strings.TrimSpace(outDir) == "" {
 		outDir = "./out"
@@ -113,6 +244,16 @@ func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]
 			return nil, err
 		}
 		written = append(written, p)
+	case "pdf":
+		pdfData, err := r.RenderPDF(rep)
+		if err != nil {
+			return nil, err
+		}
+		p := filepath.Join(outDir, "report.pdf")
+		if err := os.WriteFile(p, pdfData, 0o644); err != nil {
+			return nil, err
+		}
+		written = append(written, p)
 	case "both":
 		md, err := r.RenderMarkdown(rep)
 		if err != nil {
@@ -133,6 +274,16 @@ func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]
 			return nil, err
 		}
 		written = append(written, jsPath)
+
+		pdfData, err := r.RenderPDF(rep)
+		if err != nil {
+			return nil, err
+		}
+		pdfPath := filepath.Join(outDir, "report.pdf")
+		if err := os.WriteFile(pdfPath, pdfData, 0o644); err != nil {
+			return nil, err
+		}
+		written = append(written, pdfPath)
 	default:
 		return nil, fmt.Errorf("unsupported format %q", format)
 	}
