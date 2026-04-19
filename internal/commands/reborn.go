@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -15,6 +16,9 @@ import (
 func newRebornCommand() *cobra.Command {
 	var targetStack string
 	var constraints string
+	var outputFormat string
+	var outputDir string
+	var years int
 
 	cmd := &cobra.Command{
 		Use:   "reborn <owner/repo>",
@@ -38,31 +42,51 @@ func newRebornCommand() *cobra.Command {
 			evidence := buildEvidence(bundle)
 			plan, risks, milestones := buildReincarnationPlan(bundle.Repository, targetStack, consText, evidence, app.LLMClient)
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Reborn plan for %s/%s\n", owner, repo)
-			fmt.Fprintf(cmd.OutOrStdout(), "Target stack: %s\n", plan.TargetStack)
-			fmt.Fprintln(cmd.OutOrStdout(), "Architecture:")
-			for _, l := range plan.Architecture {
-				fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", l)
+			// Build NecropsyReport for artifact writing
+			if years <= 0 {
+				years = app.Config.Analysis.DefaultYears
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Migration:")
-			for _, m := range plan.MigrationPlan {
-				fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", m)
+			snapshotDate := time.Now().UTC().Format(time.RFC3339)
+			rep := report.NecropsyReport{
+				Repository:          fmt.Sprintf("%s/%s", owner, repo),
+				SnapshotDate:        snapshotDate,
+				DeathThresholdYears: years,
+				Stars:               int(floatValue(bundle.Repository["stars"])),
+				LastCommitAt:        stringValue(bundle.Repository["pushed_at"]),
+				CorePhilosophy:      inferCorePhilosophy(bundle.Repository),
+				ReincarnationPlan:   plan,
+				Risks:               risks,
+				Next90Days:          milestones,
+				Evidence:            evidence,
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Milestones:")
-			for _, m := range milestones {
-				fmt.Fprintf(cmd.OutOrStdout(), "- %s %s\n", m.DayRange, m.Objective)
+
+			// Write artifacts using the renderer
+			outDir := outputDir
+			if strings.TrimSpace(outDir) == "" {
+				outDir = app.Config.App.OutputDir
 			}
-			if len(risks) > 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "Risks:")
-				for _, r := range risks {
-					fmt.Fprintf(cmd.OutOrStdout(), "- [%s] %s | stop-loss: %s\n", r.Severity, r.Title, r.StopLossAction)
-				}
+			format := outputFormat
+			if strings.TrimSpace(format) == "" {
+				format = "both"
+			}
+
+			written, err := app.Renderer.WriteArtifacts(rep, outDir, format)
+			if err != nil {
+				return fmt.Errorf("write artifacts: %w", err)
+			}
+
+			// Print file paths
+			for _, p := range written {
+				fmt.Fprintln(cmd.OutOrStdout(), p)
 			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&targetStack, "target-stack", "", "Target implementation stack")
 	cmd.Flags().StringVar(&constraints, "constraints", "", "Constraint text or file path")
+	cmd.Flags().StringVar(&outputFormat, "format", "", "Output format: markdown, json, or both (default: both)")
+	cmd.Flags().StringVar(&outputDir, "out", "", "Output directory (default: ./out from config)")
+	cmd.Flags().IntVar(&years, "years", 0, "Inactivity threshold context in years (default from config)")
 	return cmd
 }
 
