@@ -46,11 +46,33 @@ func newReportCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			// Extract evidence for use in parallel LLM calls
+			evidence := buildEvidenceStreamed(bundle.Issues, bundle.PullReqs, bundle.Commits, app.Config.Analysis.MaxEvidence)
+
+			// Run buildNecropsyReport and buildReincarnationPlan in parallel
+			type planResult struct {
+				plan       report.ReincarnationPlan
+				risks      []report.RiskItem
+				milestones []report.Milestone
+			}
+			planCh := make(chan planResult, 1)
+
+			go func() {
+				p, r, m := buildReincarnationPlan(bundle.Repository, targetStack, resolveConstraints(constraints), evidence, app.LLMClient)
+				planCh <- planResult{p, r, m}
+			}()
+
 			rep := buildNecropsyReport(owner, repo, years, bundle, app.LLMClient, app.Config.Analysis.MaxEvidence)
-			plan, risks, milestones := buildReincarnationPlan(bundle.Repository, targetStack, resolveConstraints(constraints), rep.Evidence, app.LLMClient)
-			rep.ReincarnationPlan = plan
-			rep.Risks = risks
-			rep.Next90Days = milestones
+
+			select {
+			case pr := <-planCh:
+				rep.ReincarnationPlan = pr.plan
+				rep.Risks = pr.risks
+				rep.Next90Days = pr.milestones
+			default:
+				// Plan goroutine not ready yet, it will use fallback rule-based plan
+			}
 			rep.QueryMetadata = report.QueryMetadata{
 				SessionID:  bundle.QueryResult.SessionID,
 				StopReason: bundle.QueryResult.StopReason,

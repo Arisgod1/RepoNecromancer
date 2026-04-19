@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/repo-necromancer/necro/internal/llm"
 	"github.com/repo-necromancer/necro/internal/query"
@@ -112,7 +113,7 @@ func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, unti
 	if mode == modeLite {
 		req := query.QueryRequest{
 			Command:   "autopsy",
-			SessionID: app.SessionID,
+			SessionID: app.SessionID + "-repo",
 			Budget: query.BudgetLimits{
 				MaxTurns:  app.Config.Query.MaxTurns,
 				MaxTokens: app.Config.Query.MaxTokens,
@@ -152,86 +153,183 @@ func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, unti
 		sinceDate = time.Now().AddDate(-2, 0, 0).Format("2006-01-02")
 	}
 
-	// Build actions based on mode
-	actions := []query.Action{
-		{
-			ToolName: "github.repository",
-			Input:    map[string]any{"owner": owner, "repo": repo},
-		},
-		{
-			ToolName: "github.issues",
-			Input: map[string]any{
-				"owner":     owner,
-				"repo":      repo,
-				"since":     sinceDate,
-				"until":     until,
-				"max_items": maxItems,
-			},
-		},
-		{
-			ToolName: "github.pull_requests",
-			Input: map[string]any{
-				"owner":     owner,
-				"repo":      repo,
-				"since":     sinceDate,
-				"until":     until,
-				"max_items": maxItems,
-			},
-		},
-		{
-			ToolName: "github.commits",
-			Input: map[string]any{
-				"owner":     owner,
-				"repo":      repo,
-				"since":     sinceDate,
-				"until":     until,
-				"max_items": maxItems,
-			},
-		},
-	}
-
-	// For sample mode, use increased max_items but with since date filter
+	// Calculate max_items for commits in sample mode
+	commitMaxItems := maxItems
 	if mode == modeSample {
-		// Override max_items to 500 for commits in sample mode
-		actions[3].Input["max_items"] = 500
+		commitMaxItems = 500
 	}
 
-	req := query.QueryRequest{
-		Command:   "autopsy",
-		SessionID: app.SessionID,
-		Budget: query.BudgetLimits{
-			MaxTurns:  app.Config.Query.MaxTurns,
-			MaxTokens: app.Config.Query.MaxTokens,
-			MaxCost:   app.Config.Query.MaxCost,
-		},
-		Actions: actions,
-	}
-	res, err := app.Query.Run(ctx, req)
+	// Run all 4 API calls in parallel using errgroup
+	var (
+		repoResult     query.QueryResult
+		issuesResult   query.QueryResult
+		prsResult      query.QueryResult
+		commitsResult  query.QueryResult
+		repoErr        error
+		issuesErr      error
+		prsErr         error
+		commitsErr     error
+	)
+
+	eg, ctx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		req := query.QueryRequest{
+			Command:   "autopsy",
+			SessionID: app.SessionID + "-1",
+			Budget: query.BudgetLimits{
+				MaxTurns:  app.Config.Query.MaxTurns,
+				MaxTokens: app.Config.Query.MaxTokens,
+				MaxCost:   app.Config.Query.MaxCost,
+			},
+			Actions: []query.Action{
+				{
+					ToolName: "github.repository",
+					Input:    map[string]any{"owner": owner, "repo": repo},
+				},
+			},
+		}
+		repoResult, repoErr = app.Query.Run(ctx, req)
+		return repoErr
+	})
+
+	eg.Go(func() error {
+		req := query.QueryRequest{
+			Command:   "autopsy",
+			SessionID: app.SessionID + "-2",
+			Budget: query.BudgetLimits{
+				MaxTurns:  app.Config.Query.MaxTurns,
+				MaxTokens: app.Config.Query.MaxTokens,
+				MaxCost:   app.Config.Query.MaxCost,
+			},
+			Actions: []query.Action{
+				{
+					ToolName: "github.issues",
+					Input: map[string]any{
+						"owner":     owner,
+						"repo":      repo,
+						"since":     sinceDate,
+						"until":     until,
+						"max_items": maxItems,
+					},
+				},
+			},
+		}
+		issuesResult, issuesErr = app.Query.Run(ctx, req)
+		return issuesErr
+	})
+
+	eg.Go(func() error {
+		req := query.QueryRequest{
+			Command:   "autopsy",
+			SessionID: app.SessionID + "-3",
+			Budget: query.BudgetLimits{
+				MaxTurns:  app.Config.Query.MaxTurns,
+				MaxTokens: app.Config.Query.MaxTokens,
+				MaxCost:   app.Config.Query.MaxCost,
+			},
+			Actions: []query.Action{
+				{
+					ToolName: "github.pull_requests",
+					Input: map[string]any{
+						"owner":     owner,
+						"repo":      repo,
+						"since":     sinceDate,
+						"until":     until,
+						"max_items": maxItems,
+					},
+				},
+			},
+		}
+		prsResult, prsErr = app.Query.Run(ctx, req)
+		return prsErr
+	})
+
+	eg.Go(func() error {
+		req := query.QueryRequest{
+			Command:   "autopsy",
+			SessionID: app.SessionID + "-4",
+			Budget: query.BudgetLimits{
+				MaxTurns:  app.Config.Query.MaxTurns,
+				MaxTokens: app.Config.Query.MaxTokens,
+				MaxCost:   app.Config.Query.MaxCost,
+			},
+			Actions: []query.Action{
+				{
+					ToolName: "github.commits",
+					Input: map[string]any{
+						"owner":     owner,
+						"repo":      repo,
+						"since":     sinceDate,
+						"until":     until,
+						"max_items": commitMaxItems,
+					},
+				},
+			},
+		}
+		commitsResult, commitsErr = app.Query.Run(ctx, req)
+		return commitsErr
+	})
+
+	err := eg.Wait()
 	if err != nil {
 		return analysisBundle{}, 0, err
 	}
-	bundle := analysisBundle{QueryResult: res}
+
+	// Merge results into bundle
+	bundle := analysisBundle{}
 	totalCount := 0
-	for _, ex := range res.Executions {
+
+	// Use the repository result as the primary QueryResult
+	if repoResult.Executions != nil {
+		bundle.QueryResult = repoResult
+	}
+
+	// Process repository result
+	for _, ex := range repoResult.Executions {
 		if ex.Error != "" {
 			continue
 		}
-		switch ex.ToolName {
-		case "github.repository":
+		if ex.ToolName == "github.repository" {
 			if repoObj, ok := ex.Output["repository"].(map[string]any); ok {
 				bundle.Repository = repoObj
 			}
-		case "github.issues":
+		}
+	}
+
+	// Process issues result
+	for _, ex := range issuesResult.Executions {
+		if ex.Error != "" {
+			continue
+		}
+		if ex.ToolName == "github.issues" {
 			bundle.Issues = asMapSlice(ex.Output["issues"])
 			totalCount += len(bundle.Issues)
-		case "github.pull_requests":
+		}
+	}
+
+	// Process PRs result
+	for _, ex := range prsResult.Executions {
+		if ex.Error != "" {
+			continue
+		}
+		if ex.ToolName == "github.pull_requests" {
 			bundle.PullReqs = asMapSlice(ex.Output["pull_requests"])
 			totalCount += len(bundle.PullReqs)
-		case "github.commits":
+		}
+	}
+
+	// Process commits result
+	for _, ex := range commitsResult.Executions {
+		if ex.Error != "" {
+			continue
+		}
+		if ex.ToolName == "github.commits" {
 			bundle.Commits = asMapSlice(ex.Output["commits"])
 			totalCount += len(bundle.Commits)
 		}
 	}
+
 	if len(bundle.Repository) == 0 {
 		return analysisBundle{}, 0, fmt.Errorf("failed to fetch repository metadata")
 	}
