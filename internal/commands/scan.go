@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/repo-necromancer/necro/internal/i18n"
 	"github.com/repo-necromancer/necro/internal/query"
 )
 
@@ -85,19 +86,34 @@ func newScanCommand() *cobra.Command {
 			}
 			repos := asMapSlice(exec.Output["repositories"])
 			if len(repos) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No repositories matched the dead-repo criteria.")
+				tr := i18n.GetTranslator()
+				lang := app.Config.App.Language
+				if lang == "" {
+					lang = "zh"
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), tr.T(lang, "no_repositories_matched"))
 				return nil
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Ranked dead repository candidates (%d):\n", len(repos))
+			tr := i18n.GetTranslator()
+			lang := app.Config.App.Language
+			if lang == "" {
+				lang = "zh"
+			}
+			t := func(key string) string { return tr.T(lang, key) }
+
+			fmt.Fprintf(cmd.OutOrStdout(), "%s (%d):\n", t("ranked_dead_repository_candidates"), len(repos))
 			for i, r := range repos {
 				fmt.Fprintf(
 					cmd.OutOrStdout(),
-					"%2d. %-40s stars=%-7v inactivity_years=%.2f language=%s\n",
+					"%2d. %-40s %s=%-7v %s=%.2f %s=%s\n",
 					i+1,
 					stringValue(r["full_name"]),
+					t("stars"),
 					r["stars"],
+					t("inactivity_years"),
 					floatValue(r["inactivity_years"]),
+					t("language"),
 					strings.TrimSpace(stringValue(r["language"])),
 				)
 			}
@@ -211,8 +227,15 @@ func runMultiRepoScan(cmd *cobra.Command, app *App, repos string, parallel int, 
 	wg.Wait()
 	_ = eg.Wait() // Already using waitgroup, eg is for context cancellation
 
+	lang := app.Config.App.Language
+	if lang == "" {
+		lang = "zh"
+	}
+	tr := i18n.GetTranslator()
+	t := func(key string) string { return tr.T(lang, key) }
+
 	if len(results) == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No repositories found.")
+		fmt.Fprintln(cmd.OutOrStdout(), t("no_repositories_found"))
 		return nil
 	}
 
@@ -221,15 +244,18 @@ func runMultiRepoScan(cmd *cobra.Command, app *App, repos string, parallel int, 
 		return floatValue(results[i].stars) > floatValue(results[j].stars)
 	})
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Multi-repo scan results (%d repos):\n", len(results))
+	fmt.Fprintf(cmd.OutOrStdout(), "%s (%d):\n", t("multi_repo_scan_results"), len(results))
 	for i, r := range results {
 		fmt.Fprintf(
 			cmd.OutOrStdout(),
-			"%2d. %-40s stars=%-7v inactivity_years=%.2f language=%s\n",
+			"%2d. %-40s %s=%-7v %s=%.2f %s=%s\n",
 			i+1,
 			r.fullName,
+			t("stars"),
 			r.stars,
+			t("inactivity_years"),
 			r.inactivityYears,
+			t("language"),
 			r.language,
 		)
 	}

@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/jung-kurt/gofpdf"
+
+	"github.com/repo-necromancer/necro/internal/i18n"
 )
 
 type Renderer struct{}
@@ -17,65 +19,73 @@ func NewRenderer() *Renderer {
 	return &Renderer{}
 }
 
-func (r *Renderer) RenderMarkdown(rep NecropsyReport) (string, error) {
+func (r *Renderer) RenderMarkdown(rep NecropsyReport, locale string) (string, error) {
+	tr := i18n.GetTranslator()
+	t := func(key string) string { return tr.T(locale, key) }
+
 	var b strings.Builder
 
-	b.WriteString("# 验尸报告与转世方案\n\n")
-	b.WriteString("## 1. Project profile\n")
-	b.WriteString(fmt.Sprintf("- Repository: `%s`\n", rep.Repository))
-	b.WriteString(fmt.Sprintf("- Snapshot date: %s\n", rep.SnapshotDate))
-	b.WriteString(fmt.Sprintf("- Stars: %d\n", rep.Stars))
-	b.WriteString(fmt.Sprintf("- Last commit at: %s\n\n", rep.LastCommitAt))
+	b.WriteString("# " + t("app_title") + "\n\n")
+	b.WriteString("## 1. " + t("section1_title") + "\n")
+	b.WriteString(fmt.Sprintf("- %s: `%s`\n", t("repository"), rep.Repository))
+	b.WriteString(fmt.Sprintf("- %s: %s\n", t("snapshot_date"), rep.SnapshotDate))
+	b.WriteString(fmt.Sprintf("- %s: %d\n", t("stars"), rep.Stars))
+	b.WriteString(fmt.Sprintf("- %s: %s\n\n", t("last_commit_at"), rep.LastCommitAt))
 
-	b.WriteString("## 2. Death qualification criteria\n")
-	b.WriteString(fmt.Sprintf("- Inactivity threshold (years): %d\n\n", rep.DeathThresholdYears))
+	b.WriteString("## 2. " + t("section2_title") + "\n")
+	b.WriteString(fmt.Sprintf("- %s: %d\n\n", t("inactivity_threshold_years"), rep.DeathThresholdYears))
 
-	b.WriteString("## 3. Evidence index\n")
+	b.WriteString("## 3. " + t("section3_title") + "\n")
 	for _, e := range rep.Evidence {
 		b.WriteString(fmt.Sprintf("- [%s] %s (%s) %s\n", e.ID, e.Title, e.Type, e.URL))
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## 4. Timeline and turning points\n")
+	b.WriteString("## 4. " + t("section4_title") + "\n")
 	for _, ev := range rep.Timeline {
 		b.WriteString(fmt.Sprintf("- %s: **%s** — %s (ref: %s)\n", ev.Timestamp, ev.Title, ev.Description, ev.SourceRef))
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## 5. Cause analysis (with confidence + counter-evidence)\n")
+	b.WriteString("## 5. " + t("section5_title") + "\n")
 	for _, c := range rep.CauseScores {
-		b.WriteString(fmt.Sprintf("- `%s`: score=%.2f confidence=%.2f evidence=%v counter=%v\n", c.Label, c.Score, c.Confidence, c.EvidenceRefs, c.CounterEvidence))
+		b.WriteString(fmt.Sprintf("- `%s`: %s=%.2f %s=%.2f %s=%v %s=%v\n", c.Label, t("score"), c.Score, t("confidence"), c.Confidence, t("evidence_refs"), c.EvidenceRefs, t("counter_evidence"), c.CounterEvidence))
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## 6. Core philosophy extraction\n")
+	b.WriteString("## 6. " + t("section6_title") + "\n")
 	for _, p := range rep.CorePhilosophy {
 		b.WriteString(fmt.Sprintf("- %s\n", p))
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## 7. 2026 reincarnation architecture\n")
-	b.WriteString(fmt.Sprintf("- Target stack: %s\n", rep.ReincarnationPlan.TargetStack))
+	b.WriteString("## 7. " + t("section7_title") + "\n")
+	b.WriteString(fmt.Sprintf("- %s: %s\n", t("target_stack"), rep.ReincarnationPlan.TargetStack))
+	b.WriteString(fmt.Sprintf("- %s:\n", t("architecture")))
 	for _, layer := range rep.ReincarnationPlan.Architecture {
-		b.WriteString(fmt.Sprintf("- %s\n", layer))
+		b.WriteString(fmt.Sprintf("  - %s\n", layer))
+	}
+	b.WriteString(fmt.Sprintf("- %s:\n", t("migration_plan")))
+	for _, step := range rep.ReincarnationPlan.MigrationPlan {
+		b.WriteString(fmt.Sprintf("  - %s\n", step))
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## 8. 90-day implementation roadmap\n")
+	b.WriteString("## 8. " + t("section8_title") + "\n")
 	for _, m := range rep.Next90Days {
 		b.WriteString(fmt.Sprintf("- %s: %s (%s)\n", m.DayRange, m.Objective, strings.Join(m.Deliverables, ", ")))
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## 9. Risks and stop-loss actions\n")
+	b.WriteString("## 9. " + t("section9_title") + "\n")
 	for _, rk := range rep.Risks {
-		b.WriteString(fmt.Sprintf("- [%s] %s — stop-loss: %s\n", rk.Severity, rk.Title, rk.StopLossAction))
+		b.WriteString(fmt.Sprintf("- [%s] %s — %s: %s\n", rk.Severity, rk.Title, t("stop_loss_action"), rk.StopLossAction))
 	}
 	b.WriteString("\n")
 
-	b.WriteString("## 10. Method and source attribution\n")
-	b.WriteString("- Sources include GitHub metadata/issues/PRs/commits and permission-gated network tools.\n")
-	b.WriteString("- All evidence entries include URL/time traceability.\n")
+	b.WriteString("## 10. " + t("section10_title") + "\n")
+	b.WriteString("- " + t("sources_include") + "\n")
+	b.WriteString("- " + t("evidence_traceable") + "\n")
 	return b.String(), nil
 }
 
@@ -83,41 +93,44 @@ func (r *Renderer) RenderJSON(rep NecropsyReport) ([]byte, error) {
 	return json.MarshalIndent(rep, "", "  ")
 }
 
-func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
+func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) {
+	tr := i18n.GetTranslator()
+	t := func(key string) string { return tr.T(locale, key) }
+
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(15, 15, 15)
 	pdf.AddPage()
 
 	// Title
 	pdf.SetFont("Arial", "B", 18)
-	pdf.MultiCell(0, 10, "验尸报告与转世方案", "", "C", false)
+	pdf.MultiCell(0, 10, t("app_title"), "", "C", false)
 	pdf.Ln(5)
 
 	// Section 1: Project profile
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "1. Project profile")
+	pdf.Cell(0, 8, "1. "+t("section1_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 5, fmt.Sprintf("Repository: %s", rep.Repository))
+	pdf.Cell(0, 5, fmt.Sprintf("%s: %s", t("repository"), rep.Repository))
 	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Snapshot date: %s", rep.SnapshotDate))
+	pdf.Cell(0, 5, fmt.Sprintf("%s: %s", t("snapshot_date"), rep.SnapshotDate))
 	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Stars: %d", rep.Stars))
+	pdf.Cell(0, 5, fmt.Sprintf("%s: %d", t("stars"), rep.Stars))
 	pdf.Ln(5)
-	pdf.Cell(0, 5, fmt.Sprintf("Last commit at: %s", rep.LastCommitAt))
+	pdf.Cell(0, 5, fmt.Sprintf("%s: %s", t("last_commit_at"), rep.LastCommitAt))
 	pdf.Ln(6)
 
 	// Section 2: Death qualification criteria
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "2. Death qualification criteria")
+	pdf.Cell(0, 8, "2. "+t("section2_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 5, fmt.Sprintf("Inactivity threshold (years): %d", rep.DeathThresholdYears))
+	pdf.Cell(0, 5, fmt.Sprintf("%s: %d", t("inactivity_threshold_years"), rep.DeathThresholdYears))
 	pdf.Ln(6)
 
 	// Section 3: Evidence index
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "3. Evidence index")
+	pdf.Cell(0, 8, "3. "+t("section3_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 9)
 	for _, e := range rep.Evidence {
@@ -128,7 +141,7 @@ func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
 
 	// Section 4: Timeline
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "4. Timeline and turning points")
+	pdf.Cell(0, 8, "4. "+t("section4_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 9)
 	for _, ev := range rep.Timeline {
@@ -139,18 +152,18 @@ func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
 
 	// Section 5: Cause analysis
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "5. Cause analysis")
+	pdf.Cell(0, 8, "5. "+t("section5_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 9)
 	for _, c := range rep.CauseScores {
-		pdf.Cell(0, 5, fmt.Sprintf("- %s: score=%.2f confidence=%.2f", c.Label, c.Score, c.Confidence))
+		pdf.Cell(0, 5, fmt.Sprintf("- %s: %s=%.2f %s=%.2f", c.Label, t("score"), c.Score, t("confidence"), c.Confidence))
 		pdf.Ln(5)
 	}
 	pdf.Ln(4)
 
 	// Section 6: Core philosophy
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "6. Core philosophy extraction")
+	pdf.Cell(0, 8, "6. "+t("section6_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 10)
 	for _, p := range rep.CorePhilosophy {
@@ -161,10 +174,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
 
 	// Section 7: Reincarnation architecture
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "7. 2026 reincarnation architecture")
+	pdf.Cell(0, 8, "7. "+t("section7_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 5, fmt.Sprintf("Target stack: %s", rep.ReincarnationPlan.TargetStack))
+	pdf.Cell(0, 5, fmt.Sprintf("%s: %s", t("target_stack"), rep.ReincarnationPlan.TargetStack))
 	pdf.Ln(5)
 	for _, layer := range rep.ReincarnationPlan.Architecture {
 		pdf.Cell(0, 5, fmt.Sprintf("- %s", layer))
@@ -174,7 +187,7 @@ func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
 
 	// Section 8: 90-day roadmap
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "8. 90-day implementation roadmap")
+	pdf.Cell(0, 8, "8. "+t("section8_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 9)
 	for _, m := range rep.Next90Days {
@@ -185,23 +198,23 @@ func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
 
 	// Section 9: Risks
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "9. Risks and stop-loss actions")
+	pdf.Cell(0, 8, "9. "+t("section9_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 9)
 	for _, rk := range rep.Risks {
-		pdf.Cell(0, 5, fmt.Sprintf("- [%s] %s -- stop-loss: %s", rk.Severity, rk.Title, rk.StopLossAction))
+		pdf.Cell(0, 5, fmt.Sprintf("- [%s] %s -- %s: %s", rk.Severity, rk.Title, t("stop_loss_action"), rk.StopLossAction))
 		pdf.Ln(5)
 	}
 	pdf.Ln(4)
 
 	// Section 10: Attribution
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(0, 8, "10. Method and source attribution")
+	pdf.Cell(0, 8, "10. "+t("section10_title"))
 	pdf.Ln(8)
 	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 6, "Sources include GitHub metadata/issues/PRs/commits and permission-gated network tools.")
+	pdf.Cell(0, 6, t("sources_include"))
 	pdf.Ln(6)
-	pdf.Cell(0, 6, "All evidence entries include URL/time traceability.")
+	pdf.Cell(0, 6, t("evidence_traceable"))
 
 	var buf bytes.Buffer
 	err := pdf.Output(&buf)
@@ -211,7 +224,7 @@ func (r *Renderer) RenderPDF(rep NecropsyReport) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]string, error) {
+func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format, locale string) ([]string, error) {
 	if strings.TrimSpace(outDir) == "" {
 		outDir = "./out"
 	}
@@ -222,10 +235,13 @@ func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]
 		format = "both"
 	}
 
+	tr := i18n.GetTranslator()
+	_ = tr // reserved for future use
+
 	written := make([]string, 0, 3)
 	switch format {
 	case "markdown":
-		md, err := r.RenderMarkdown(rep)
+		md, err := r.RenderMarkdown(rep, locale)
 		if err != nil {
 			return nil, err
 		}
@@ -245,7 +261,7 @@ func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]
 		}
 		written = append(written, p)
 	case "pdf":
-		pdfData, err := r.RenderPDF(rep)
+		pdfData, err := r.RenderPDF(rep, locale)
 		if err != nil {
 			return nil, err
 		}
@@ -255,7 +271,7 @@ func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]
 		}
 		written = append(written, p)
 	case "both":
-		md, err := r.RenderMarkdown(rep)
+		md, err := r.RenderMarkdown(rep, locale)
 		if err != nil {
 			return nil, err
 		}
@@ -275,7 +291,7 @@ func (r *Renderer) WriteArtifacts(rep NecropsyReport, outDir, format string) ([]
 		}
 		written = append(written, jsPath)
 
-		pdfData, err := r.RenderPDF(rep)
+		pdfData, err := r.RenderPDF(rep, locale)
 		if err != nil {
 			return nil, err
 		}

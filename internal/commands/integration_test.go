@@ -873,7 +873,7 @@ func TestReportEndToEnd(t *testing.T) {
 
 			rep := buildNecropsyReport(tt.owner, tt.repo, 3, bundle, nil /* no LLM */, 250)
 
-			written, err := app.Renderer.WriteArtifacts(rep, tmpDir, tt.format)
+			written, err := app.Renderer.WriteArtifacts(rep, tmpDir, tt.format, "zh")
 
 			if tt.expectErr {
 				if err == nil {
@@ -1879,7 +1879,7 @@ func TestRendererUnsupportedFormat(t *testing.T) {
 
 	for _, format := range []string{"yaml", "xml", "csv", "html"} {
 		t.Run(format, func(t *testing.T) {
-			_, err := app.Renderer.WriteArtifacts(rep, tmpDir, format)
+			_, err := app.Renderer.WriteArtifacts(rep, tmpDir, format, "zh")
 			if err == nil {
 				t.Errorf("expected error for format=%q, got nil", format)
 			}

@@ -42,6 +42,7 @@ type Config struct {
 		LogLevel  string `mapstructure:"log_level"`
 		OutputDir string `mapstructure:"output_dir"`
 		CacheDir  string `mapstructure:"cache_dir"`
+		Language  string `mapstructure:"language"`
 	} `mapstructure:"app"`
 	Analysis struct {
 		DefaultYears int `mapstructure:"default_years"`
@@ -172,6 +173,7 @@ func loadConfig() (Config, error) {
 	v.SetDefault("app.log_level", "info")
 	v.SetDefault("app.output_dir", "./out")
 	v.SetDefault("app.cache_dir", "./.cache/necro")
+	v.SetDefault("app.language", "zh")
 	v.SetDefault("analysis.default_years", 3)
 	v.SetDefault("analysis.min_stars", 5000)
 	v.SetDefault("analysis.max_items", 500)

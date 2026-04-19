@@ -77,7 +77,12 @@ func newRebornCommand() *cobra.Command {
 				format = "both"
 			}
 
-			written, err := app.Renderer.WriteArtifacts(rep, outDir, format)
+			lang := app.Config.App.Language
+			if lang == "" {
+				lang = "zh"
+			}
+
+			written, err := app.Renderer.WriteArtifacts(rep, outDir, format, lang)
 			if err != nil {
 				return fmt.Errorf("write artifacts: %w", err)
 			}

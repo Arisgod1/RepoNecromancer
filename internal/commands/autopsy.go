@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/repo-necromancer/necro/internal/i18n"
 	"github.com/repo-necromancer/necro/internal/llm"
 	"github.com/repo-necromancer/necro/internal/query"
 	"github.com/repo-necromancer/necro/internal/report"
@@ -77,21 +78,28 @@ func newAutopsyCommand() *cobra.Command {
 			}
 			autopsyReport := buildNecropsyReport(owner, repo, years, bundle, app.LLMClient, maxEvidence)
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Autopsy for %s/%s\n", owner, repo)
-			fmt.Fprintf(cmd.OutOrStdout(), "Stars: %d | Last commit: %s\n", autopsyReport.Stars, autopsyReport.LastCommitAt)
-			fmt.Fprintln(cmd.OutOrStdout(), "Cause scores:")
-			for _, c := range autopsyReport.CauseScores {
-				fmt.Fprintf(cmd.OutOrStdout(), "- %s score=%.2f confidence=%.2f\n", c.Label, c.Score, c.Confidence)
+			lang := app.Config.App.Language
+			if lang == "" {
+				lang = "zh"
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Evidence indexed: %d\n", len(autopsyReport.Evidence))
+			tr := i18n.GetTranslator()
+			t := func(key string) string { return tr.T(lang, key) }
+
+			fmt.Fprintf(cmd.OutOrStdout(), "%s %s/%s\n", t("autopsy_for"), owner, repo)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: %d | %s: %s\n", t("stars"), autopsyReport.Stars, t("last_commit_at"), autopsyReport.LastCommitAt)
+			fmt.Fprintln(cmd.OutOrStdout(), t("cause_scores_label")+":")
+			for _, c := range autopsyReport.CauseScores {
+				fmt.Fprintf(cmd.OutOrStdout(), "- %s %s=%.2f %s=%.2f\n", c.Label, t("score"), c.Score, t("confidence"), c.Confidence)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: %d\n", t("evidence_indexed"), len(autopsyReport.Evidence))
 
 			// Print sampling summary for sample mode
 			if fetchMode == modeSample {
-				fmt.Fprintf(cmd.OutOrStdout(), "Mode: sample (memory-efficient, sampled %d recent commits + recent 2yr issues/PRs)\n", maxItems)
-				fmt.Fprintf(cmd.OutOrStdout(), "Evidence indexed: %d (capped from ~%d total)\n", len(autopsyReport.Evidence), totalCount)
-				fmt.Fprintln(cmd.OutOrStdout(), "Sampling bias: Recent activity bias — historical patterns may be underrepresented")
+				fmt.Fprintf(cmd.OutOrStdout(), t("mode_sample")+"\n", maxItems)
+				fmt.Fprintf(cmd.OutOrStdout(), t("evidence_capped")+"\n", len(autopsyReport.Evidence), totalCount)
+				fmt.Fprintln(cmd.OutOrStdout(), t("sampling_bias"))
 			} else if fetchMode == modeLite {
-				fmt.Fprintf(cmd.OutOrStdout(), "Mode: lite (repo metadata only + recent 30 days, rule-based scoring)\n")
+				fmt.Fprintln(cmd.OutOrStdout(), t("mode_lite"))
 			}
 
 			return nil

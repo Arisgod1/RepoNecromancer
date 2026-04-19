@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/repo-necromancer/necro/internal/i18n"
 	"github.com/repo-necromancer/necro/internal/report"
 )
 
@@ -81,11 +82,17 @@ func newReportCommand() *cobra.Command {
 				Partial:    bundle.QueryResult.Partial,
 			}
 
-			written, err := app.Renderer.WriteArtifacts(rep, outDir, format)
+			lang := app.Config.App.Language
+			if lang == "" {
+				lang = "zh"
+			}
+
+			written, err := app.Renderer.WriteArtifacts(rep, outDir, format, lang)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Generated report artifacts for %s/%s:\n", owner, repo)
+			tr := i18n.GetTranslator()
+			fmt.Fprintf(cmd.OutOrStdout(), "%s %s/%s:\n", tr.T(lang, "generated_report_artifacts"), owner, repo)
 			for _, p := range written {
 				fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", p)
 			}

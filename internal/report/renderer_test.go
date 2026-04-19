@@ -37,7 +37,7 @@ func TestRenderer_RenderMarkdown(t *testing.T) {
 				if !strings.Contains(md, "owner/repo") {
 					t.Error("missing repository name")
 				}
-				if !strings.Contains(md, "Stars: 100") {
+				if !strings.Contains(md, "星标数: 100") {
 					t.Error("missing stars count")
 				}
 			},
@@ -91,17 +91,17 @@ func TestRenderer_RenderMarkdown(t *testing.T) {
 				Next90Days:        []Milestone{},
 				Risks:             []RiskItem{},
 			},
-			check: func(t *testing.T, md string) {
-				if !strings.Contains(md, "maintainer_burnout") {
-					t.Error("missing maintainer_burnout label")
-				}
-				if !strings.Contains(md, "score=0.85") {
-					t.Error("missing score=0.85")
-				}
-				if !strings.Contains(md, "confidence=0.72") {
-					t.Error("missing confidence=0.72")
-				}
-			},
+		check: func(t *testing.T, md string) {
+			if !strings.Contains(md, "maintainer_burnout") {
+				t.Error("missing maintainer_burnout label")
+			}
+			if !strings.Contains(md, "0.85") {
+				t.Error("missing score 0.85")
+			}
+			if !strings.Contains(md, "0.72") {
+				t.Error("missing confidence 0.72")
+			}
+		},
 		},
 		{
 			name: "timeline events rendered",
@@ -213,7 +213,7 @@ func TestRenderer_RenderMarkdown(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := NewRenderer()
-			md, err := r.RenderMarkdown(tt.rep)
+			md, err := r.RenderMarkdown(tt.rep, "zh")
 			if err != nil {
 				t.Fatalf("RenderMarkdown returned error: %v", err)
 			}
@@ -339,7 +339,7 @@ func TestRenderer_WriteArtifacts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := NewRenderer()
-			files, err := r.WriteArtifacts(rep, tt.outDir, tt.format)
+			files, err := r.WriteArtifacts(rep, tt.outDir, tt.format, "zh")
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error for unsupported format")
@@ -377,7 +377,7 @@ func TestRenderer_WriteArtifacts_CreatesDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	outDir := filepath.Join(tmpDir, "subdir", "nested")
 
-	files, err := r.WriteArtifacts(rep, outDir, "markdown")
+	files, err := r.WriteArtifacts(rep, outDir, "markdown", "zh")
 	if err != nil {
 		t.Fatalf("WriteArtifacts should create nested directories: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestRenderer_RenderMarkdown_LargeEvidenceSet(t *testing.T) {
 		Risks:               []RiskItem{},
 	}
 
-	md, err := r.RenderMarkdown(rep)
+	md, err := r.RenderMarkdown(rep, "zh")
 	if err != nil {
 		t.Fatalf("RenderMarkdown failed on large evidence set: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestRenderer_RenderMarkdown_AllCauseScores(t *testing.T) {
 		Risks:               []RiskItem{},
 	}
 
-	md, err := r.RenderMarkdown(rep)
+	md, err := r.RenderMarkdown(rep, "zh")
 	if err != nil {
 		t.Fatalf("RenderMarkdown failed: %v", err)
 	}
@@ -471,11 +471,11 @@ func TestRenderer_WriteArtifacts_Overwrites(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Write twice - should not error
-	_, err := r.WriteArtifacts(rep, tmpDir, "markdown")
+	_, err := r.WriteArtifacts(rep, tmpDir, "markdown", "zh")
 	if err != nil {
 		t.Fatalf("first WriteArtifacts failed: %v", err)
 	}
-	_, err = r.WriteArtifacts(rep, tmpDir, "markdown")
+	_, err = r.WriteArtifacts(rep, tmpDir, "markdown", "zh")
 	if err != nil {
 		t.Fatalf("second WriteArtifacts (overwrite) failed: %v", err)
 	}

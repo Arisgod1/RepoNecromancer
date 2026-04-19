@@ -2,6 +2,7 @@ app:
   log_level: info
   output_dir: ./out
   cache_dir: ./.cache/necro
+  language: zh
 
 analysis:
   default_years: 3
