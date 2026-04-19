@@ -177,7 +177,7 @@ func loadConfig() (Config, error) {
 	v.SetDefault("network.deny_private_networks", true)
 	v.SetDefault("permissions.mode", "default")
 	v.SetDefault("tools.deny", []string{})
-	v.SetDefault("llm.model", "qwen3.6-plus")
+	v.SetDefault("llm.model", "qwen3.6-flash")
 	v.SetDefault("llm.api_base", "https://dashscope.aliyuncs.com/compatible-mode/v1")
 
 	if custom := strings.TrimSpace(os.Getenv("NECRO_CONFIG")); custom != "" {

@@ -202,14 +202,18 @@ func buildReincarnationPlanWithLLM(llmClient *llm.Client, repoMeta map[string]an
 		lines = append(lines, "No evidence items available.")
 	}
 
-	systemPrompt := "You are a principal engineer modernizing legacy repositories. Return only JSON."
+	systemPrompt := "You are a principal engineer modernizing legacy repositories. Return ONLY valid JSON, no markdown, no explanation."
 	userPrompt := fmt.Sprintf(
 		"Build a structured reincarnation proposal for this repository.\n"+
 			"Repository: %s\nDescription: %s\nTopics: %s\nPreferred stack: %s\nConstraints: %s\n\n"+
 			"Evidence:\n%s\n\n"+
-			"Return JSON object with keys: target_stack, architecture, migration_plan, successor_signals, risks, milestones.\n"+
-			"risks items: {title, severity, stop_loss_action}. severity must be low|medium|high.\n"+
-			"milestones items: {day_range, objective, deliverables}.",
+			"Return ONLY a single JSON object with these exact keys (no markdown, no text outside JSON):\n"+
+			"- target_stack: a plain string describing the full tech stack (e.g. \"Go 1.26 + gRPC + Postgres + OpenTelemetry\")\n"+
+			"- architecture: JSON array of strings describing architectural layers\n"+
+			"- migration_plan: JSON array of strings for migration steps\n"+
+			"- successor_signals: JSON array of strings for adoption signals\n"+
+			"- risks: JSON array of objects {title (string), severity (string: low|medium|high), stop_loss_action (string)}\n"+
+			"- milestones: JSON array of objects {day_range (string), objective (string), deliverables (JSON array of strings)}\n",
 		repoName,
 		description,
 		topics,
@@ -223,7 +227,6 @@ func buildReincarnationPlanWithLLM(llmClient *llm.Client, repoMeta map[string]an
 		return report.ReincarnationPlan{}, nil, nil, err
 	}
 	raw = extractJSONObject(raw)
-
 	var parsed llmPlanResponse
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		return report.ReincarnationPlan{}, nil, nil, fmt.Errorf("parse llm reincarnation plan: %w", err)

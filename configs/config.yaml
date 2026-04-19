@@ -30,5 +30,5 @@ tools:
   deny: []
 
 llm:
-  model: qwen3.6-plus
+  model: qwen3.6-flash
   api_base: https://dashscope.aliyuncs.com/compatible-mode/v1

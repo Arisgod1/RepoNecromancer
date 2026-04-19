@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultModel   = "qwen3.6-plus"
+	defaultModel   = "qwen3.6-flash"
 	defaultAPIBase = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	maxRetries     = 3
 )
