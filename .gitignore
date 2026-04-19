@@ -1,0 +1,116 @@
+# =============================================================================
+# Repo Necromancer - .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Binaries & Executables
+# -----------------------------------------------------------------------------
+# Built executable
+necro
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test        # test binary (from `go test -c`)
+*.out         # test output
+
+# Build artifacts
+out/dist/
+out/bin/
+
+# -----------------------------------------------------------------------------
+# Go
+# -----------------------------------------------------------------------------
+# If you are using Go modules
+# (go.mod and go.sum should be committed)
+vendor/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.cover
+*.coverprofile
+
+# -----------------------------------------------------------------------------
+# Output & Cache Directories
+# -----------------------------------------------------------------------------
+.cache/
+.cache-/
+out/
+output/
+dist/
+build/
+
+# Evidence and report outputs (generated files)
+out/evidence-index.json
+out/report.json
+out/report.md
+
+# -----------------------------------------------------------------------------
+# IDE & Editor
+# -----------------------------------------------------------------------------
+.idea/
+.idea_modules/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
+*.sublime-project
+.settings/
+.project
+.classpath
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# -----------------------------------------------------------------------------
+# Environment & Secrets
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+secrets/
+credentials/
+
+# -----------------------------------------------------------------------------
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+logs/
+nohup.out
+
+# -----------------------------------------------------------------------------
+# OS Files
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# -----------------------------------------------------------------------------
+# Temporary Files
+# -----------------------------------------------------------------------------
+*.tmp
+*.temp
+*.bak
+*.orig
+*_original.go
+tmp/
+temp/
