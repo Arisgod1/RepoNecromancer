@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/repo-necromancer/necro/internal/report"
 )
 
 func newReportCommand() *cobra.Command {
@@ -49,6 +51,13 @@ func newReportCommand() *cobra.Command {
 			rep.ReincarnationPlan = plan
 			rep.Risks = risks
 			rep.Next90Days = milestones
+			rep.QueryMetadata = report.QueryMetadata{
+				SessionID:  bundle.QueryResult.SessionID,
+				StopReason: bundle.QueryResult.StopReason,
+				UsedTurns:  bundle.QueryResult.Budget.UsedTurns,
+				MaxTurns:   bundle.QueryResult.Budget.MaxTurns,
+				Partial:    bundle.QueryResult.Partial,
+			}
 
 			written, err := app.Renderer.WriteArtifacts(rep, outDir, format)
 			if err != nil {
