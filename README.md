@@ -12,10 +12,8 @@
 
 - [Features](#features)
 - [Architecture](#architecture)
-- [Installation](#installation)
 - [Configuration](#configuration)
 - [Environment Variables](#environment-variables)
-- [Usage](#usage)
   - [`necro scan`](#necro-scan)
   - [`necro autopsy`](#necro-autopsy)
   - [`necro report`](#necro-report)
@@ -126,9 +124,11 @@ Run tests: `go test ./... -cover`
 ### Build from Source
 
 ```bash
-git clone https://github.com/repo-necromancer/necro.git
-cd necro
+git clone https://github.com/Arisgod1/RepoNecromancer.git
+cd RepoNecromancer
 go build -o necro ./cmd/necro
+# The binary is created at ./necro in the current directory
+# Add it to your PATH, or run as ./necro
 ```
 
 ### Pre-built Binary
