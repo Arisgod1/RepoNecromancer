@@ -1194,3 +1194,137 @@ func TestAsMapSlice(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Failure category tests
+// ---------------------------------------------------------------------------
+
+func TestPermissionDenial(t *testing.T) {
+	// Verify that when a query request targets a blocked domain,
+	// the engine correctly records a deny decision in the execution.
+	// We test the permissions engine in isolation since mock tools bypass domain checks.
+	perm := permissions.NewEngine(permissions.Config{
+		Mode:           permissions.ModeDefault,
+		AllowedDomains: []string{},                       // no domains allowed
+		BlockedDomains: []string{"evil.example.com"},    // block specific domain
+		DenyPrivateNetworks: true,
+		ToolAllowOverrides:  map[string]permissions.Behavior{},
+	})
+
+	ctx := context.Background()
+	decision, err := perm.CanUseTool(ctx, "web.fetch", map[string]any{"url": "https://evil.example.com/data"})
+
+	if err != nil {
+		t.Fatalf("permission engine error: %v", err)
+	}
+	if decision.Behavior != string(permissions.BehaviorDeny) {
+		t.Errorf("expected deny, got %s", decision.Behavior)
+	}
+}
+
+func TestBudgetExhaustion(t *testing.T) {
+	// Verify that budget correctly tracks turn consumption and sets stop reason.
+	budget := query.NewBudget(query.BudgetLimits{MaxTurns: 2})
+
+	// Consume turns
+	ok1 := budget.ConsumeTurn()
+	ok2 := budget.ConsumeTurn()
+	ok3 := budget.ConsumeTurn() // should fail
+
+	if !ok1 || !ok2 || ok3 {
+		t.Errorf("turn consumption mismatch: ok1=%v ok2=%v ok3=%v", ok1, ok2, ok3)
+	}
+
+	snap := budget.Snapshot()
+	if snap.StopReason != "budget.max_turns_exceeded" {
+		t.Errorf("expected stop_reason=budget.max_turns_exceeded, got %q", snap.StopReason)
+	}
+	if snap.UsedTurns != 2 || snap.MaxTurns != 2 {
+		t.Errorf("expected UsedTurns=2 MaxTurns=2, got UsedTurns=%d MaxTurns=%d", snap.UsedTurns, snap.MaxTurns)
+	}
+}
+
+func TestCacheDegradation(t *testing.T) {
+	server := newMockGitHubServer()
+	defer server.Server.Close()
+
+	app, _ := buildTestApp("", server.URL)
+
+	// Clear the store to simulate cache miss — query should still succeed
+	app.Store = state.NewMemoryStore() // fresh empty store = always cache miss
+
+	req := query.QueryRequest{
+		Command:   "scan",
+		SessionID: "test-cache-degraded",
+		Budget:    query.BudgetLimits{MaxTurns: 16},
+		Actions: []query.Action{
+			{
+				ToolName: "github.search_repositories",
+				Input:    map[string]any{"years": 3, "min_stars": 100, "language": "Go", "limit": 10},
+			},
+		},
+	}
+
+	result, err := app.Query.Run(context.Background(), req)
+
+	// Cache miss should NOT cause failure — graceful degradation
+	if err != nil {
+		t.Fatalf("query failed with empty cache (should be graceful): %v", err)
+	}
+	if len(result.Executions) == 0 {
+		t.Error("expected at least one execution result with empty cache")
+	}
+}
+
+// failingStore wraps state.Store and makes all operations fail.
+type failingStore struct{}
+
+func (s *failingStore) Get(ctx context.Context, key string) (any, error) {
+	return nil, errors.New("cache read error")
+}
+func (s *failingStore) Set(ctx context.Context, key string, value any) error {
+	return errors.New("cache write error")
+}
+func (s *failingStore) Delete(ctx context.Context, key string) error {
+	return errors.New("cache delete error")
+}
+func (s *failingStore) List(ctx context.Context, prefix string) ([]string, error) {
+	return nil, errors.New("cache list error")
+}
+func (s *failingStore) Clear(ctx context.Context) error {
+	return errors.New("cache clear error")
+}
+
+func TestLLMFallback(t *testing.T) {
+	server := newMockGitHubServer()
+	defer server.Server.Close()
+
+	app, _ := buildTestApp("", server.URL)
+
+	// Use an LLM client that simulates failure followed by fallback
+	// Since we don't have a real LLM in tests, verify that when LLM is unavailable,
+	// the report still generates without LLM analysis (graceful degradation)
+	bundle, err := collectAnalysisData(
+		context.Background(),
+		app,
+		"dead-owner",
+		"dead-repo",
+		"",
+		"",
+		200,
+	)
+	if err != nil {
+		t.Fatalf("collectAnalysisData failed: %v", err)
+	}
+
+	// Build report without LLM (nil LLMClient should be handled gracefully)
+	rep := buildNecropsyReport("dead-owner", "dead-repo", 3, bundle, nil)
+
+	if rep.Repository != "dead-owner/dead-repo" {
+		t.Errorf("expected repository 'dead-owner/dead-repo', got %q", rep.Repository)
+	}
+
+	if len(rep.CorePhilosophy) == 0 {
+		t.Error("expected non-empty core philosophy even without LLM")
+	}
+}
