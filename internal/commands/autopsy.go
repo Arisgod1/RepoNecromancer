@@ -18,10 +18,11 @@ import (
 )
 
 type analysisBundle struct {
-	Repository map[string]any
-	Issues     []map[string]any
-	PullReqs   []map[string]any
-	Commits    []map[string]any
+	Repository  map[string]any
+	Issues      []map[string]any
+	PullReqs    []map[string]any
+	Commits     []map[string]any
+	QueryResult query.QueryResult
 }
 
 func newAutopsyCommand() *cobra.Command {
@@ -75,7 +76,7 @@ func newAutopsyCommand() *cobra.Command {
 func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, until string, maxItems int) (analysisBundle, error) {
 	req := query.QueryRequest{
 		Command:   "autopsy",
-		SessionID: "autopsy-" + time.Now().UTC().Format("20060102150405"),
+		SessionID: app.SessionID,
 		Budget: query.BudgetLimits{
 			MaxTurns:  app.Config.Query.MaxTurns,
 			MaxTokens: app.Config.Query.MaxTokens,
@@ -122,7 +123,7 @@ func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, unti
 	if err != nil {
 		return analysisBundle{}, err
 	}
-	bundle := analysisBundle{}
+	bundle := analysisBundle{QueryResult: res}
 	for _, ex := range res.Executions {
 		if ex.Error != "" {
 			continue
@@ -161,6 +162,17 @@ func buildNecropsyReport(owner, repo string, years int, data analysisBundle, llm
 		Timeline:            timeline,
 		CauseScores:         causes,
 		Evidence:            evidence,
+		QueryMetadata: report.QueryMetadata{
+			SessionID:  data.QueryResult.SessionID,
+			StopReason: data.QueryResult.StopReason,
+			UsedTurns:  data.QueryResult.Budget.UsedTurns,
+			MaxTurns:   data.QueryResult.Budget.MaxTurns,
+			UsedTokens: data.QueryResult.Budget.UsedTokens,
+			MaxTokens:  data.QueryResult.Budget.MaxTokens,
+			UsedCost:   data.QueryResult.Budget.UsedCost,
+			MaxCost:    data.QueryResult.Budget.MaxCost,
+			Partial:    data.QueryResult.Partial,
+		},
 	}
 }
 

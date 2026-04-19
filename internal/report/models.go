@@ -13,6 +13,19 @@ type NecropsyReport struct {
 	ReincarnationPlan   ReincarnationPlan `json:"reincarnation_plan"`
 	Risks               []RiskItem        `json:"risks"`
 	Next90Days          []Milestone       `json:"next_90_days"`
+	QueryMetadata       QueryMetadata     `json:"query_metadata,omitempty"`
+}
+
+type QueryMetadata struct {
+	SessionID   string `json:"session_id,omitempty"`
+	StopReason  string `json:"stop_reason,omitempty"`
+	UsedTurns   int    `json:"used_turns,omitempty"`
+	MaxTurns    int    `json:"max_turns,omitempty"`
+	UsedTokens  int    `json:"used_tokens,omitempty"`
+	MaxTokens   int    `json:"max_tokens,omitempty"`
+	UsedCost    float64 `json:"used_cost,omitempty"`
+	MaxCost     float64 `json:"max_cost,omitempty"`
+	Partial     bool    `json:"partial,omitempty"`
 }
 
 type TimelineEvent struct {
