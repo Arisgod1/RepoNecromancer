@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/repo-necromancer/necro/internal/logging"
 	"github.com/repo-necromancer/necro/internal/permissions"
 	"github.com/repo-necromancer/necro/internal/state"
 	"github.com/repo-necromancer/necro/internal/tools"
@@ -87,6 +88,15 @@ func (e *Engine) Run(ctx context.Context, req QueryRequest) (QueryResult, error)
 		if err != nil {
 			return result, fmt.Errorf("permission engine failed for %s: %w", action.ToolName, err)
 		}
+
+		logging.Default().Audit("tool_invocation", map[string]any{
+			"session_id": req.SessionID,
+			"tool":       action.ToolName,
+			"decision":   decision.Behavior,
+			"reason":      decision.Reason,
+			"source":      decision.Source,
+			"input_keys":  fmt.Sprintf("%v", normalizedInput),
+		})
 
 		ex := ActionExecution{
 			ToolName:  action.ToolName,
