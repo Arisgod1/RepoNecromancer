@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -39,7 +38,7 @@ func newScanCommand() *cobra.Command {
 
 			req := query.QueryRequest{
 				Command:   "scan",
-				SessionID: "scan-" + time.Now().UTC().Format("20060102150405"),
+				SessionID: app.SessionID,
 				Budget: query.BudgetLimits{
 					MaxTurns:  app.Config.Query.MaxTurns,
 					MaxTokens: app.Config.Query.MaxTokens,

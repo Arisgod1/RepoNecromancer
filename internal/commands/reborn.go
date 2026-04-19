@@ -58,6 +58,13 @@ func newRebornCommand() *cobra.Command {
 				Risks:               risks,
 				Next90Days:          milestones,
 				Evidence:            evidence,
+				QueryMetadata: report.QueryMetadata{
+					SessionID:  bundle.QueryResult.SessionID,
+					StopReason: bundle.QueryResult.StopReason,
+					UsedTurns:  bundle.QueryResult.Budget.UsedTurns,
+					MaxTurns:   bundle.QueryResult.Budget.MaxTurns,
+					Partial:    bundle.QueryResult.Partial,
+				},
 			}
 
 			// Write artifacts using the renderer
