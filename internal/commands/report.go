@@ -42,11 +42,11 @@ func newReportCommand() *cobra.Command {
 				outDir = app.Config.App.OutputDir
 			}
 
-			bundle, err := collectAnalysisData(cmd.Context(), app, owner, repo, since, until, maxItems)
+			bundle, _, err := collectAnalysisData(cmd.Context(), app, owner, repo, since, until, maxItems, modeFull)
 			if err != nil {
 				return err
 			}
-			rep := buildNecropsyReport(owner, repo, years, bundle, app.LLMClient)
+			rep := buildNecropsyReport(owner, repo, years, bundle, app.LLMClient, app.Config.Analysis.MaxEvidence)
 			plan, risks, milestones := buildReincarnationPlan(bundle.Repository, targetStack, resolveConstraints(constraints), rep.Evidence, app.LLMClient)
 			rep.ReincarnationPlan = plan
 			rep.Risks = risks

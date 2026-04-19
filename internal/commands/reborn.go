@@ -34,12 +34,12 @@ func newRebornCommand() *cobra.Command {
 				return err
 			}
 
-			bundle, err := collectAnalysisData(cmd.Context(), app, owner, repo, "", "", app.Config.Analysis.MaxItems)
+			bundle, _, err := collectAnalysisData(cmd.Context(), app, owner, repo, "", "", app.Config.Analysis.MaxItems, modeFull)
 			if err != nil {
 				return err
 			}
 			consText := resolveConstraints(constraints)
-			evidence := buildEvidence(bundle)
+			evidence := buildEvidenceStreamed(bundle.Issues, bundle.PullReqs, bundle.Commits, app.Config.Analysis.MaxEvidence)
 			plan, risks, milestones := buildReincarnationPlan(bundle.Repository, targetStack, consText, evidence, app.LLMClient)
 
 			// Build NecropsyReport for artifact writing

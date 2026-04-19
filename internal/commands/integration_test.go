@@ -734,7 +734,7 @@ func TestAutopsyWithMock(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			bundle, err := collectAnalysisData(
+			bundle, _, err := collectAnalysisData(
 				context.Background(),
 				app,
 				tt.owner,
@@ -742,6 +742,7 @@ func TestAutopsyWithMock(t *testing.T) {
 				"",   // since
 				"",   // until
 				200,  // maxItems
+				modeFull,
 			)
 
 			if err != nil {
@@ -766,7 +767,7 @@ func TestAutopsyWithMock(t *testing.T) {
 			}
 
 			// Verify evidence items contain expected fields
-			evidence := buildEvidence(bundle)
+			evidence := buildEvidenceStreamed(bundle.Issues, bundle.PullReqs, bundle.Commits, 250)
 			if len(evidence) == 0 {
 				t.Error("expected non-empty evidence from bundle")
 			}
@@ -865,12 +866,12 @@ func TestReportEndToEnd(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 
-			bundle, err := collectAnalysisData(context.Background(), app, tt.owner, tt.repo, "", "", 200)
+			bundle, _, err := collectAnalysisData(context.Background(), app, tt.owner, tt.repo, "", "", 200, modeFull)
 			if err != nil {
 				t.Fatalf("collectAnalysisData failed: %v", err)
 			}
 
-			rep := buildNecropsyReport(tt.owner, tt.repo, 3, bundle, nil /* no LLM */)
+			rep := buildNecropsyReport(tt.owner, tt.repo, 3, bundle, nil /* no LLM */, 250)
 
 			written, err := app.Renderer.WriteArtifacts(rep, tmpDir, tt.format)
 
@@ -1066,7 +1067,7 @@ func TestBuildEvidenceOrdering(t *testing.T) {
 		Commits:    fixtureCommits,
 	}
 
-	evidence := buildEvidence(bundle)
+	evidence := buildEvidenceStreamed(bundle.Issues, bundle.PullReqs, bundle.Commits, 250)
 
 	// Evidence should be sorted by timestamp (oldest first)
 	for i := 1; i < len(evidence); i++ {
@@ -1304,7 +1305,7 @@ func TestLLMFallback(t *testing.T) {
 	// Use an LLM client that simulates failure followed by fallback
 	// Since we don't have a real LLM in tests, verify that when LLM is unavailable,
 	// the report still generates without LLM analysis (graceful degradation)
-	bundle, err := collectAnalysisData(
+	bundle, _, err := collectAnalysisData(
 		context.Background(),
 		app,
 		"dead-owner",
@@ -1312,13 +1313,14 @@ func TestLLMFallback(t *testing.T) {
 		"",
 		"",
 		200,
+		modeFull,
 	)
 	if err != nil {
 		t.Fatalf("collectAnalysisData failed: %v", err)
 	}
 
 	// Build report without LLM (nil LLMClient should be handled gracefully)
-	rep := buildNecropsyReport("dead-owner", "dead-repo", 3, bundle, nil)
+	rep := buildNecropsyReport("dead-owner", "dead-repo", 3, bundle, nil, 250)
 
 	if rep.Repository != "dead-owner/dead-repo" {
 		t.Errorf("expected repository 'dead-owner/dead-repo', got %q", rep.Repository)

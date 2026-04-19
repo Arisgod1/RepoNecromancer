@@ -47,6 +47,7 @@ type Config struct {
 		DefaultYears int `mapstructure:"default_years"`
 		MinStars     int `mapstructure:"min_stars"`
 		MaxItems     int `mapstructure:"max_items"`
+		MaxEvidence  int `mapstructure:"max_evidence"`
 	} `mapstructure:"analysis"`
 	Query struct {
 		MaxTurns  int     `mapstructure:"max_turns"`
@@ -174,6 +175,7 @@ func loadConfig() (Config, error) {
 	v.SetDefault("analysis.default_years", 3)
 	v.SetDefault("analysis.min_stars", 5000)
 	v.SetDefault("analysis.max_items", 500)
+	v.SetDefault("analysis.max_evidence", 250)
 	v.SetDefault("query.max_turns", 16)
 	v.SetDefault("query.max_tokens", 0)
 	v.SetDefault("query.max_cost", 0)

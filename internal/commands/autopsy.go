@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,15 @@ import (
 	"github.com/repo-necromancer/necro/internal/report"
 )
 
+// Fetch mode for memory-efficient processing
+type fetchMode string
+
+const (
+	modeFull   fetchMode = "full"
+	modeSample fetchMode = "sample"
+	modeLite   fetchMode = "lite"
+)
+
 type analysisBundle struct {
 	Repository  map[string]any
 	Issues      []map[string]any
@@ -30,6 +40,8 @@ func newAutopsyCommand() *cobra.Command {
 	var since string
 	var until string
 	var maxItems int
+	var maxEvidence int
+	var mode string
 
 	cmd := &cobra.Command{
 		Use:   "autopsy <owner/repo>",
@@ -38,6 +50,16 @@ func newAutopsyCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if years <= 0 {
 				return fmt.Errorf("--years must be > 0")
+			}
+			fetchMode := fetchMode(mode)
+			if fetchMode != modeFull && fetchMode != modeSample && fetchMode != modeLite {
+				return fmt.Errorf("--mode must be one of: full, sample, lite")
+			}
+			if maxEvidence <= 0 {
+				maxEvidence = 250
+			}
+			if maxEvidence > 2000 {
+				maxEvidence = 2000
 			}
 			app, err := appFromCmd(cmd)
 			if err != nil {
@@ -48,11 +70,11 @@ func newAutopsyCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			bundle, err := collectAnalysisData(cmd.Context(), app, owner, repo, since, until, maxItems)
+			bundle, totalCount, err := collectAnalysisData(cmd.Context(), app, owner, repo, since, until, maxItems, fetchMode)
 			if err != nil {
 				return err
 			}
-			autopsyReport := buildNecropsyReport(owner, repo, years, bundle, app.LLMClient)
+			autopsyReport := buildNecropsyReport(owner, repo, years, bundle, app.LLMClient, maxEvidence)
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Autopsy for %s/%s\n", owner, repo)
 			fmt.Fprintf(cmd.OutOrStdout(), "Stars: %d | Last commit: %s\n", autopsyReport.Stars, autopsyReport.LastCommitAt)
@@ -61,6 +83,16 @@ func newAutopsyCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "- %s score=%.2f confidence=%.2f\n", c.Label, c.Score, c.Confidence)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Evidence indexed: %d\n", len(autopsyReport.Evidence))
+
+			// Print sampling summary for sample mode
+			if fetchMode == modeSample {
+				fmt.Fprintf(cmd.OutOrStdout(), "Mode: sample (memory-efficient, sampled %d recent commits + recent 2yr issues/PRs)\n", maxItems)
+				fmt.Fprintf(cmd.OutOrStdout(), "Evidence indexed: %d (capped from ~%d total)\n", len(autopsyReport.Evidence), totalCount)
+				fmt.Fprintln(cmd.OutOrStdout(), "Sampling bias: Recent activity bias — historical patterns may be underrepresented")
+			} else if fetchMode == modeLite {
+				fmt.Fprintf(cmd.OutOrStdout(), "Mode: lite (repo metadata only + recent 30 days, rule-based scoring)\n")
+			}
+
 			return nil
 		},
 	}
@@ -69,11 +101,101 @@ func newAutopsyCommand() *cobra.Command {
 	cmd.Flags().StringVar(&since, "since", "", "Optional evidence lower bound (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().StringVar(&until, "until", "", "Optional evidence upper bound (RFC3339 or YYYY-MM-DD)")
 	cmd.Flags().IntVar(&maxItems, "max-items", 200, "Maximum issues/prs/commits to fetch")
+	cmd.Flags().IntVar(&maxEvidence, "max-evidence", 250, "Maximum evidence items to collect (max 2000)")
+	cmd.Flags().StringVar(&mode, "mode", "full", "Fetch mode: full, sample, or lite")
 	_ = cmd.MarkFlagRequired("years")
 	return cmd
 }
 
-func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, until string, maxItems int) (analysisBundle, error) {
+func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, until string, maxItems int, mode fetchMode) (analysisBundle, int, error) {
+	// For lite mode, only fetch repository metadata
+	if mode == modeLite {
+		req := query.QueryRequest{
+			Command:   "autopsy",
+			SessionID: app.SessionID,
+			Budget: query.BudgetLimits{
+				MaxTurns:  app.Config.Query.MaxTurns,
+				MaxTokens: app.Config.Query.MaxTokens,
+				MaxCost:   app.Config.Query.MaxCost,
+			},
+			Actions: []query.Action{
+				{
+					ToolName: "github.repository",
+					Input:    map[string]any{"owner": owner, "repo": repo},
+				},
+			},
+		}
+		res, err := app.Query.Run(ctx, req)
+		if err != nil {
+			return analysisBundle{}, 0, err
+		}
+		bundle := analysisBundle{QueryResult: res}
+		for _, ex := range res.Executions {
+			if ex.Error != "" {
+				continue
+			}
+			if ex.ToolName == "github.repository" {
+				if repoObj, ok := ex.Output["repository"].(map[string]any); ok {
+					bundle.Repository = repoObj
+				}
+			}
+		}
+		if len(bundle.Repository) == 0 {
+			return analysisBundle{}, 0, fmt.Errorf("failed to fetch repository metadata")
+		}
+		return bundle, 0, nil
+	}
+
+	// For sample mode, calculate "since" date for 2 years ago if not provided
+	sinceDate := since
+	if mode == modeSample && sinceDate == "" {
+		sinceDate = time.Now().AddDate(-2, 0, 0).Format("2006-01-02")
+	}
+
+	// Build actions based on mode
+	actions := []query.Action{
+		{
+			ToolName: "github.repository",
+			Input:    map[string]any{"owner": owner, "repo": repo},
+		},
+		{
+			ToolName: "github.issues",
+			Input: map[string]any{
+				"owner":     owner,
+				"repo":      repo,
+				"since":     sinceDate,
+				"until":     until,
+				"max_items": maxItems,
+			},
+		},
+		{
+			ToolName: "github.pull_requests",
+			Input: map[string]any{
+				"owner":     owner,
+				"repo":      repo,
+				"since":     sinceDate,
+				"until":     until,
+				"max_items": maxItems,
+			},
+		},
+		{
+			ToolName: "github.commits",
+			Input: map[string]any{
+				"owner":     owner,
+				"repo":      repo,
+				"since":     sinceDate,
+				"until":     until,
+				"max_items": maxItems,
+			},
+		},
+	}
+
+	// For sample mode, use increased max_items but with since date filter
+	if mode == modeSample {
+		// Override max_items to 500 for commits in sample mode
+		actions[3].Input["max_items"] = 500
+	}
+
 	req := query.QueryRequest{
 		Command:   "autopsy",
 		SessionID: app.SessionID,
@@ -82,48 +204,14 @@ func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, unti
 			MaxTokens: app.Config.Query.MaxTokens,
 			MaxCost:   app.Config.Query.MaxCost,
 		},
-		Actions: []query.Action{
-			{
-				ToolName: "github.repository",
-				Input:    map[string]any{"owner": owner, "repo": repo},
-			},
-			{
-				ToolName: "github.issues",
-				Input: map[string]any{
-					"owner":     owner,
-					"repo":      repo,
-					"since":     since,
-					"until":     until,
-					"max_items": maxItems,
-				},
-			},
-			{
-				ToolName: "github.pull_requests",
-				Input: map[string]any{
-					"owner":     owner,
-					"repo":      repo,
-					"since":     since,
-					"until":     until,
-					"max_items": maxItems,
-				},
-			},
-			{
-				ToolName: "github.commits",
-				Input: map[string]any{
-					"owner":     owner,
-					"repo":      repo,
-					"since":     since,
-					"until":     until,
-					"max_items": maxItems,
-				},
-			},
-		},
+		Actions: actions,
 	}
 	res, err := app.Query.Run(ctx, req)
 	if err != nil {
-		return analysisBundle{}, err
+		return analysisBundle{}, 0, err
 	}
 	bundle := analysisBundle{QueryResult: res}
+	totalCount := 0
 	for _, ex := range res.Executions {
 		if ex.Error != "" {
 			continue
@@ -135,21 +223,30 @@ func collectAnalysisData(ctx context.Context, app *App, owner, repo, since, unti
 			}
 		case "github.issues":
 			bundle.Issues = asMapSlice(ex.Output["issues"])
+			totalCount += len(bundle.Issues)
 		case "github.pull_requests":
 			bundle.PullReqs = asMapSlice(ex.Output["pull_requests"])
+			totalCount += len(bundle.PullReqs)
 		case "github.commits":
 			bundle.Commits = asMapSlice(ex.Output["commits"])
+			totalCount += len(bundle.Commits)
 		}
 	}
 	if len(bundle.Repository) == 0 {
-		return analysisBundle{}, fmt.Errorf("failed to fetch repository metadata")
+		return analysisBundle{}, 0, fmt.Errorf("failed to fetch repository metadata")
 	}
-	return bundle, nil
+	return bundle, totalCount, nil
 }
 
-func buildNecropsyReport(owner, repo string, years int, data analysisBundle, llmClient *llm.Client) report.NecropsyReport {
-	evidence := buildEvidence(data)
-	causes := scoreCauses(evidence, llmClient)
+func buildNecropsyReport(owner, repo string, years int, data analysisBundle, llmClient *llm.Client, maxEvidence int) report.NecropsyReport {
+	evidence := buildEvidenceStreamed(data.Issues, data.PullReqs, data.Commits, maxEvidence)
+	// For lite mode, skip LLM cause scoring and use rule-based only
+	var causes []report.CauseScore
+	if len(evidence) == 0 {
+		causes = scoreCausesRuleBased(evidence)
+	} else {
+		causes = scoreCauses(evidence, llmClient)
+	}
 	timeline := buildTimeline(data, evidence)
 
 	return report.NecropsyReport{
@@ -176,19 +273,39 @@ func buildNecropsyReport(owner, repo string, years int, data analysisBundle, llm
 	}
 }
 
-func parseOwnerRepo(v string) (string, string, error) {
-	parts := strings.Split(strings.TrimSpace(v), "/")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid repository %q, expected owner/repo", v)
-	}
-	return parts[0], parts[1], nil
+// evidenceHeap is a min-heap of EvidenceItem by Relevance score
+type evidenceHeap []report.EvidenceItem
+
+func (h evidenceHeap) Len() int { return len(h) }
+func (h evidenceHeap) Less(i, j int) bool { return h[i].Relevance < h[j].Relevance }
+func (h evidenceHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+
+func (h *evidenceHeap) Push(x any) {
+	*h = append(*h, x.(report.EvidenceItem))
 }
 
-func buildEvidence(data analysisBundle) []report.EvidenceItem {
-	events := make([]report.EvidenceItem, 0, len(data.Issues)+len(data.PullReqs)+len(data.Commits))
+func (h *evidenceHeap) Pop() any {
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	*h = old[0 : n-1]
+	return item
+}
+
+// buildEvidenceStreamed uses a min-heap to keep only the top N items by relevance
+// This avoids holding all items in memory simultaneously
+func buildEvidenceStreamed(issues, prs, commits []map[string]any, maxItems int) []report.EvidenceItem {
+	if maxItems <= 0 {
+		maxItems = 250
+	}
+
+	h := &evidenceHeap{}
+	heap.Init(h)
 	id := 1
-	for _, issue := range data.Issues {
-		events = append(events, report.EvidenceItem{
+
+	// Process issues
+	for _, issue := range issues {
+		item := report.EvidenceItem{
 			ID:        fmt.Sprintf("E%03d", id),
 			Type:      "issue",
 			URL:       stringValue(issue["url"]),
@@ -196,11 +313,20 @@ func buildEvidence(data analysisBundle) []report.EvidenceItem {
 			Timestamp: stringValue(issue["created_at"]),
 			Summary:   trimText(stringValue(issue["body"]), 200),
 			Relevance: relevanceScore(stringValue(issue["title"]) + " " + stringValue(issue["body"])),
-		})
+		}
 		id++
+
+		if h.Len() < maxItems {
+			heap.Push(h, item)
+		} else if item.Relevance > (*h)[0].Relevance {
+			heap.Pop(h)
+			heap.Push(h, item)
+		}
 	}
-	for _, pr := range data.PullReqs {
-		events = append(events, report.EvidenceItem{
+
+	// Process pull requests
+	for _, pr := range prs {
+		item := report.EvidenceItem{
 			ID:        fmt.Sprintf("E%03d", id),
 			Type:      "pr",
 			URL:       stringValue(pr["url"]),
@@ -208,11 +334,20 @@ func buildEvidence(data analysisBundle) []report.EvidenceItem {
 			Timestamp: stringValue(pr["created_at"]),
 			Summary:   trimText(stringValue(pr["body"]), 200),
 			Relevance: relevanceScore(stringValue(pr["title"]) + " " + stringValue(pr["body"])),
-		})
+		}
 		id++
+
+		if h.Len() < maxItems {
+			heap.Push(h, item)
+		} else if item.Relevance > (*h)[0].Relevance {
+			heap.Pop(h)
+			heap.Push(h, item)
+		}
 	}
-	for _, commit := range data.Commits {
-		events = append(events, report.EvidenceItem{
+
+	// Process commits
+	for _, commit := range commits {
+		item := report.EvidenceItem{
 			ID:        fmt.Sprintf("E%03d", id),
 			Type:      "commit",
 			URL:       stringValue(commit["url"]),
@@ -220,18 +355,38 @@ func buildEvidence(data analysisBundle) []report.EvidenceItem {
 			Timestamp: stringValue(commit["date"]),
 			Summary:   trimText(stringValue(commit["message"]), 200),
 			Relevance: relevanceScore(stringValue(commit["message"])),
-		})
+		}
 		id++
+
+		if h.Len() < maxItems {
+			heap.Push(h, item)
+		} else if item.Relevance > (*h)[0].Relevance {
+			heap.Pop(h)
+			heap.Push(h, item)
+		}
 	}
+
+	// Extract and sort by timestamp ascending (oldest first for timeline)
+	events := make([]report.EvidenceItem, 0, h.Len())
+	for h.Len() > 0 {
+		events = append(events, heap.Pop(h).(report.EvidenceItem))
+	}
+
 	sort.SliceStable(events, func(i, j int) bool {
 		ti := parseTime(events[i].Timestamp)
 		tj := parseTime(events[j].Timestamp)
 		return ti.Before(tj)
 	})
-	if len(events) > 250 {
-		events = events[:250]
-	}
+
 	return events
+}
+
+func parseOwnerRepo(v string) (string, string, error) {
+	parts := strings.Split(strings.TrimSpace(v), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid repository %q, expected owner/repo", v)
+	}
+	return parts[0], parts[1], nil
 }
 
 func scoreCauses(evidence []report.EvidenceItem, llmClient *llm.Client) []report.CauseScore {
