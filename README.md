@@ -701,6 +701,42 @@ necro report owner/repo --format json --out /tmp/necro-reports
 
 ---
 
+## Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+### [Unreleased]
+
+#### Added
+
+- **i18n support** (`f0d5a68`) — Chinese/English reports, default zh-CN
+  - 新增 i18n 国际化引擎，默认中文输出
+  - 新增 internal/i18n/ 目录，含 zh-CN.json 和 en-US.json 两套翻译
+  - renderer 所有标题和标签支持中英文切换
+  - 新增 --lang flag 和 config.yaml language 配置项
+- **cmd/necro/main.go entry point** (`5028355`) — 关键修复：cmd/necro/main.go 在磁盘上存在但从未被 git track
+- **large-repo memory mode** (`0f81de8`) — --mode full/sample/lite 三种模式, --max-evidence flag, min-heap streaming
+- **parallel startup** (`23aaeaa`) — errgroup 并行 GitHub API calls, parallel LLM inference, worker pool scanning
+- **TTL + LRU cache** (`1f24ded`) — MemoryStore 新增 TTL 过期和 LRU 驱逐策略
+- **Extension interface** (`9048ded`) — Subscribe() 方法支持 5 种生命周期事件订阅
+- **PDF export** (`d87b37c`) — gofpdf 支持纯 Go PDF 生成 (format=pdf, pdf+markdown, both)
+- **Failure simulation tests** (`7a1ef7b`) — TestPermissionDenial, TestBudgetExhaustion, TestCacheDegradation, TestLLMGracefulDegradation
+- **Unit tests** (`6ea34b4`) — logging/state/tools/extensions 单元测试 (覆盖率 27.7%-90.9%)
+
+#### Fixed
+
+- **persistent cache** (`b5c1ef1`) — GlobalCache() 改为文件持久化 (~/.cache/necro/cache.data)
+- **clone URL** (`7ad9705`) — 修复 README clone URL 和二进制路径说明
+
+#### Documentation
+
+- **README updates** (`2da5214`) — 缓存、large-repo mode、PDF 导出、EventBus 文档
+
+---
+
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
