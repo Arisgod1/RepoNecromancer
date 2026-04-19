@@ -146,7 +146,8 @@ func bootstrapApp(ctx context.Context, session logging.Session) (*App, error) {
 	store.Set("extensions:diagnostics", extRes.Diagnostics)
 	store.Set("tools:available", registry.Names())
 
-	engine := query.NewEngine(registry, perm, store)
+	eventBus := extensions.NewEventBus()
+	engine := query.NewEngine(registry, perm, store, eventBus)
 	renderer := report.NewRenderer()
 
 	app := &App{

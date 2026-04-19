@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/repo-necromancer/necro/internal/extensions"
 	"github.com/repo-necromancer/necro/internal/llm"
 	"github.com/repo-necromancer/necro/internal/network"
 	"github.com/repo-necromancer/necro/internal/permissions"
@@ -322,7 +323,7 @@ func buildTestApp(ghToken string, ghServerURL string) (*App, tools.Registry) {
 	webTools := tools.NewWebTools(netClient)
 	registry := tools.NewRegistry(append(ghTools, webTools...), nil, nil)
 
-	engine := query.NewEngine(registry, perm, store)
+	engine := query.NewEngine(registry, perm, store, extensions.NewEventBus())
 	renderer := report.NewRenderer()
 
 	app := &App{

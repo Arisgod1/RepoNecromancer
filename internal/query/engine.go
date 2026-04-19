@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/repo-necromancer/necro/internal/extensions"
 	"github.com/repo-necromancer/necro/internal/logging"
 	"github.com/repo-necromancer/necro/internal/permissions"
 	"github.com/repo-necromancer/necro/internal/state"
@@ -47,13 +48,15 @@ type Engine struct {
 	registry    *tools.Registry
 	permissions *permissions.Engine
 	store       state.Store
+	eventBus    *extensions.EventBus
 }
 
-func NewEngine(registry *tools.Registry, permissionsEngine *permissions.Engine, store state.Store) *Engine {
+func NewEngine(registry *tools.Registry, permissionsEngine *permissions.Engine, store state.Store, eventBus *extensions.EventBus) *Engine {
 	return &Engine{
 		registry:    registry,
 		permissions: permissionsEngine,
 		store:       store,
+		eventBus:    eventBus,
 	}
 }
 
@@ -84,10 +87,15 @@ func (e *Engine) Run(ctx context.Context, req QueryRequest) (QueryResult, error)
 		}
 
 		normalizedInput := normalizeInput(action.Input)
+
+		e.publish(extensions.EventActionStarted, req.SessionID, action.ToolName, normalizedInput, nil, "")
+
 		decision, err := e.permissions.CanUseTool(ctx, action.ToolName, normalizedInput)
 		if err != nil {
 			return result, fmt.Errorf("permission engine failed for %s: %w", action.ToolName, err)
 		}
+
+		e.publish(extensions.EventPermissionDecision, req.SessionID, action.ToolName, normalizedInput, nil, decision.Behavior+": "+decision.Reason)
 
 		logging.Default().WithSession(req.SessionID).Audit("tool_invocation", map[string]any{
 			"session_id": req.SessionID,
@@ -108,6 +116,7 @@ func (e *Engine) Run(ctx context.Context, req QueryRequest) (QueryResult, error)
 			ex.Error = fmt.Sprintf("tool not executed; decision=%s reason=%s", decision.Behavior, decision.Reason)
 			ex.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 			result.Executions = append(result.Executions, ex)
+			e.publish(extensions.EventActionCompleted, req.SessionID, action.ToolName, normalizedInput, nil, ex.Error)
 			continue
 		}
 
@@ -137,7 +146,22 @@ func (e *Engine) Run(ctx context.Context, req QueryRequest) (QueryResult, error)
 	if req.SessionID != "" {
 		e.store.Set("query:session:"+req.SessionID, result)
 	}
+	e.publish(extensions.EventSessionCompleted, req.SessionID, "", nil, nil, result.StopReason)
 	return result, nil
+}
+
+func (e *Engine) publish(evType extensions.EventType, sessionID, toolName string, input map[string]any, output map[string]any, errMsg string) {
+	if e.eventBus == nil {
+		return
+	}
+	e.eventBus.Publish(extensions.Event{
+		Type:      evType,
+		SessionID: sessionID,
+		ToolName:  toolName,
+		Input:     input,
+		Output:    output,
+		Error:     errMsg,
+	})
 }
 
 func normalizeInput(input map[string]any) map[string]any {
