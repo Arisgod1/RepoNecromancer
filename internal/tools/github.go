@@ -10,6 +10,14 @@ import (
 	"github.com/google/go-github/v45/github"
 )
 
+// TTL constants for cache entries.
+const (
+	TTLNormal    = 5 * time.Minute   // 5min for normal cache entries
+	TTLGitHubHIT = 2 * time.Minute   // 2min for successful GitHub hits (repo found)
+	TTL404Dead   = 1 * time.Hour     // 1h for 404 dead repos
+	TTLError     = 5 * time.Minute   // 5min for errors
+)
+
 func NewGitHubTools(token string) []Tool {
 	var client *github.Client
 	if strings.TrimSpace(token) != "" {
@@ -64,6 +72,14 @@ func (t *githubSearchRepositoriesTool) Run(ctx context.Context, input map[string
 	if limit > 100 {
 		limit = 100
 	}
+
+	// Build cache key from search parameters
+	cacheKey := fmt.Sprintf("github:search:years=%d,minStars=%d,limit=%d,lang=%s,topics=%v",
+		years, minStars, limit, language, topics)
+	if cached, ok := GlobalCache().Get(cacheKey); ok {
+		return cached.(map[string]any), nil
+	}
+
 	res, _, err := t.client.Search.Repositories(ctx, q, &github.SearchOptions{
 		Sort:  "stars",
 		Order: "desc",
@@ -72,6 +88,7 @@ func (t *githubSearchRepositoriesTool) Run(ctx context.Context, input map[string
 		},
 	})
 	if err != nil {
+		GlobalCache().SetWithTTL(cacheKey+":error", err.Error(), TTLError)
 		return nil, err
 	}
 
@@ -97,11 +114,13 @@ func (t *githubSearchRepositoriesTool) Run(ctx context.Context, input map[string
 		})
 	}
 
-	return map[string]any{
+	result := map[string]any{
 		"query":        q,
 		"total_count":  res.GetTotal(),
 		"repositories": repos,
-	}, nil
+	}
+	GlobalCache().SetWithTTL(cacheKey, result, TTLNormal)
+	return result, nil
 }
 
 type githubRepositoryTool struct {
@@ -116,11 +135,24 @@ func (t *githubRepositoryTool) Run(ctx context.Context, input map[string]any) (m
 	if owner == "" || repo == "" {
 		return nil, fmt.Errorf("owner and repo are required")
 	}
-	r, _, err := t.client.Repositories.Get(ctx, owner, repo)
+
+	cacheKey := "github:repo:" + owner + "/" + repo
+	if cached, ok := GlobalCache().Get(cacheKey); ok {
+		return cached.(map[string]any), nil
+	}
+
+	r, resp, err := t.client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
+		// Check for 404 to cache dead repos differently
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			GlobalCache().SetWithTTL(cacheKey+":404", true, TTL404Dead)
+		} else {
+			GlobalCache().SetWithTTL(cacheKey+":error", err.Error(), TTLError)
+		}
 		return nil, err
 	}
-	return map[string]any{
+
+	result := map[string]any{
 		"repository": map[string]any{
 			"owner":            owner,
 			"name":             repo,
@@ -139,7 +171,9 @@ func (t *githubRepositoryTool) Run(ctx context.Context, input map[string]any) (m
 			"archived":         r.GetArchived(),
 			"inactivity_years": inactivityYears(r.GetPushedAt()),
 		},
-	}, nil
+	}
+	GlobalCache().SetWithTTL(cacheKey, result, TTLGitHubHIT)
+	return result, nil
 }
 
 type githubIssuesTool struct {
@@ -161,6 +195,13 @@ func (t *githubIssuesTool) Run(ctx context.Context, input map[string]any) (map[s
 	since := parseOptionalTime(input["since"])
 	until := parseOptionalTime(input["until"])
 
+	// Build cache key
+	cacheKey := fmt.Sprintf("github:issues:%s/%s:max=%d,since=%s,until=%s",
+		owner, repo, maxItems, since.Format(time.RFC3339), until.Format(time.RFC3339))
+	if cached, ok := GlobalCache().Get(cacheKey); ok {
+		return cached.(map[string]any), nil
+	}
+
 	items := make([]map[string]any, 0, maxItems)
 	opt := &github.IssueListByRepoOptions{
 		State:     "all",
@@ -177,6 +218,7 @@ func (t *githubIssuesTool) Run(ctx context.Context, input map[string]any) (map[s
 	for len(items) < maxItems {
 		issues, resp, err := t.client.Issues.ListByRepo(ctx, owner, repo, opt)
 		if err != nil {
+			GlobalCache().SetWithTTL(cacheKey+":error", err.Error(), TTLError)
 			return nil, err
 		}
 		for _, is := range issues {
@@ -208,7 +250,9 @@ func (t *githubIssuesTool) Run(ctx context.Context, input map[string]any) (map[s
 		}
 		opt.Page = resp.NextPage
 	}
-	return map[string]any{"issues": items}, nil
+	result := map[string]any{"issues": items}
+	GlobalCache().SetWithTTL(cacheKey, result, TTLNormal)
+	return result, nil
 }
 
 type githubPullRequestsTool struct {
@@ -230,6 +274,13 @@ func (t *githubPullRequestsTool) Run(ctx context.Context, input map[string]any) 
 	since := parseOptionalTime(input["since"])
 	until := parseOptionalTime(input["until"])
 
+	// Build cache key
+	cacheKey := fmt.Sprintf("github:prs:%s/%s:max=%d,since=%s,until=%s",
+		owner, repo, maxItems, since.Format(time.RFC3339), until.Format(time.RFC3339))
+	if cached, ok := GlobalCache().Get(cacheKey); ok {
+		return cached.(map[string]any), nil
+	}
+
 	items := make([]map[string]any, 0, maxItems)
 	opt := &github.PullRequestListOptions{
 		State:     "all",
@@ -243,6 +294,7 @@ func (t *githubPullRequestsTool) Run(ctx context.Context, input map[string]any) 
 	for len(items) < maxItems {
 		prs, resp, err := t.client.PullRequests.List(ctx, owner, repo, opt)
 		if err != nil {
+			GlobalCache().SetWithTTL(cacheKey+":error", err.Error(), TTLError)
 			return nil, err
 		}
 		for _, pr := range prs {
@@ -278,7 +330,9 @@ func (t *githubPullRequestsTool) Run(ctx context.Context, input map[string]any) 
 		}
 		opt.Page = resp.NextPage
 	}
-	return map[string]any{"pull_requests": items}, nil
+	result := map[string]any{"pull_requests": items}
+	GlobalCache().SetWithTTL(cacheKey, result, TTLNormal)
+	return result, nil
 }
 
 type githubCommitsTool struct {
@@ -300,6 +354,13 @@ func (t *githubCommitsTool) Run(ctx context.Context, input map[string]any) (map[
 	since := parseOptionalTime(input["since"])
 	until := parseOptionalTime(input["until"])
 
+	// Build cache key
+	cacheKey := fmt.Sprintf("github:commits:%s/%s:max=%d,since=%s,until=%s",
+		owner, repo, maxItems, since.Format(time.RFC3339), until.Format(time.RFC3339))
+	if cached, ok := GlobalCache().Get(cacheKey); ok {
+		return cached.(map[string]any), nil
+	}
+
 	items := make([]map[string]any, 0, maxItems)
 	opt := &github.CommitsListOptions{
 		ListOptions: github.ListOptions{
@@ -316,6 +377,7 @@ func (t *githubCommitsTool) Run(ctx context.Context, input map[string]any) (map[
 	for len(items) < maxItems {
 		commits, resp, err := t.client.Repositories.ListCommits(ctx, owner, repo, opt)
 		if err != nil {
+			GlobalCache().SetWithTTL(cacheKey+":error", err.Error(), TTLError)
 			return nil, err
 		}
 		for _, c := range commits {
@@ -337,7 +399,9 @@ func (t *githubCommitsTool) Run(ctx context.Context, input map[string]any) (map[
 		}
 		opt.Page = resp.NextPage
 	}
-	return map[string]any{"commits": items}, nil
+	result := map[string]any{"commits": items}
+	GlobalCache().SetWithTTL(cacheKey, result, TTLNormal)
+	return result, nil
 }
 
 type authTokenRoundTripper struct {

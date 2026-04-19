@@ -101,6 +101,7 @@ func newRootCommand() *cobra.Command {
 		newAutopsyCommand(),
 		newRebornCommand(),
 		newReportCommand(),
+		newCacheCommand(),
 	)
 	return cmd
 }

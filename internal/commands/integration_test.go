@@ -1328,3 +1328,140 @@ func TestLLMFallback(t *testing.T) {
 		t.Error("expected non-empty core philosophy even without LLM")
 	}
 }
+
+// --------------------------------------------------------------------------
+// Cache invalidation tests (TTLStore)
+// --------------------------------------------------------------------------
+
+func TestCacheInvalidation(t *testing.T) {
+	t.Run("TTL expiration removes entry after TTL", func(t *testing.T) {
+		cache := tools.NewTTLStore()
+		cache.SetWithTTL("key1", "value1", 50*time.Millisecond)
+
+		// Should exist immediately
+		val, ok := cache.Get("key1")
+		if !ok {
+			t.Fatal("expected key1 to exist immediately after SetWithTTL")
+		}
+		if val != "value1" {
+			t.Errorf("expected value1, got %v", val)
+		}
+
+		// Wait past TTL
+		time.Sleep(120 * time.Millisecond)
+
+		// Should be gone
+		_, ok = cache.Get("key1")
+		if ok {
+			t.Error("expected key1 to be expired after TTL")
+		}
+	})
+
+	t.Run("Delete removes entry immediately", func(t *testing.T) {
+		cache := tools.NewTTLStore()
+		cache.SetWithTTL("key1", "value1", 1*time.Hour)
+		cache.SetWithTTL("key2", "value2", 1*time.Hour)
+
+		cache.Delete("key1")
+
+		_, ok := cache.Get("key1")
+		if ok {
+			t.Error("expected key1 to be deleted")
+		}
+
+		// key2 should still exist
+		val, ok := cache.Get("key2")
+		if !ok {
+			t.Error("expected key2 to still exist after deleting key1")
+		}
+		if val != "value2" {
+			t.Errorf("expected value2, got %v", val)
+		}
+	})
+
+	t.Run("Clear removes all entries", func(t *testing.T) {
+		cache := tools.NewTTLStore()
+		cache.SetWithTTL("key1", "value1", 1*time.Hour)
+		cache.SetWithTTL("key2", "value2", 1*time.Hour)
+		cache.SetWithTTL("key3", "value3", 1*time.Hour)
+
+		cache.Clear()
+
+		keys := cache.Keys()
+		if len(keys) != 0 {
+			t.Errorf("expected 0 keys after Clear, got %d", len(keys))
+		}
+
+		_, ok := cache.Get("key1")
+		if ok {
+			t.Error("expected key1 to be gone after Clear")
+		}
+		_, ok = cache.Get("key2")
+		if ok {
+			t.Error("expected key2 to be gone after Clear")
+		}
+		_, ok = cache.Get("key3")
+		if ok {
+			t.Error("expected key3 to be gone after Clear")
+		}
+	})
+
+	t.Run("Stats accuracy", func(t *testing.T) {
+		cache := tools.NewTTLStore()
+		// Active entries
+		cache.SetWithTTL("active1", "v1", 1*time.Hour)
+		cache.SetWithTTL("active2", "v2", 1*time.Hour)
+		// Expired entries — set TTL of 0 to simulate already-expired
+		cache.SetWithTTL("expired1", "v3", 1*time.Millisecond)
+		cache.SetWithTTL("expired2", "v4", 1*time.Millisecond)
+		// Wait for them to expire
+		time.Sleep(10 * time.Millisecond)
+
+		stats := cache.Stats()
+
+		// TotalKeys includes both active and expired (not yet cleaned up)
+		if stats.TotalKeys != 4 {
+			t.Errorf("expected TotalKeys=4, got %d", stats.TotalKeys)
+		}
+		// ActiveKeys should be 2 (the ones with 1hr TTL)
+		if stats.ActiveKeys != 2 {
+			t.Errorf("expected ActiveKeys=2, got %d", stats.ActiveKeys)
+		}
+		// ExpiredKeys should be 2
+		if stats.ExpiredKeys != 2 {
+			t.Errorf("expected ExpiredKeys=2, got %d", stats.ExpiredKeys)
+		}
+	})
+
+	t.Run("Get on non-existent key returns false", func(t *testing.T) {
+		cache := tools.NewTTLStore()
+		_, ok := cache.Get("nonexistent")
+		if ok {
+			t.Error("expected Get on nonexistent key to return false")
+		}
+	})
+
+	t.Run("Delete on non-existent key is no-op", func(t *testing.T) {
+		cache := tools.NewTTLStore()
+		cache.Delete("nonexistent") // should not panic
+	})
+
+	t.Run("Keys returns only non-expired keys", func(t *testing.T) {
+		cache := tools.NewTTLStore()
+		cache.SetWithTTL("active1", "v1", 1*time.Hour)
+		cache.SetWithTTL("active2", "v2", 1*time.Hour)
+		cache.SetWithTTL("willExpire", "v3", 1*time.Millisecond)
+
+		time.Sleep(10 * time.Millisecond)
+
+		keys := cache.Keys()
+		if len(keys) != 2 {
+			t.Errorf("expected 2 active keys, got %d: %v", len(keys), keys)
+		}
+		for _, k := range keys {
+			if k == "willExpire" {
+				t.Error("willExpire should not appear in Keys() after expiry")
+			}
+		}
+	})
+}
