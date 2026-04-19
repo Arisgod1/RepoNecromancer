@@ -13,6 +13,7 @@ import (
 
 	"github.com/repo-necromancer/necro/internal/extensions"
 	"github.com/repo-necromancer/necro/internal/llm"
+	"github.com/repo-necromancer/necro/internal/logging"
 	"github.com/repo-necromancer/necro/internal/network"
 	"github.com/repo-necromancer/necro/internal/permissions"
 	"github.com/repo-necromancer/necro/internal/query"
@@ -32,6 +33,8 @@ type App struct {
 	Renderer    *report.Renderer
 	Network     *network.Client
 	LLMClient   *llm.Client
+	SessionID   string
+	Logger      *logging.Logger
 }
 
 type Config struct {
@@ -80,10 +83,13 @@ func newRootCommand() *cobra.Command {
 		Short: "Repo Necromancer CLI",
 		Long:  "Analyze dead repositories and generate necropsy + reincarnation plans.",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			app, err := bootstrapApp(cmd.Context())
+			session := logging.NewSession(cmd.Name())
+			app, err := bootstrapApp(cmd.Context(), session)
 			if err != nil {
 				return err
 			}
+			app.Logger = session.Logger()
+			app.SessionID = session.ID
 			ctx := context.WithValue(cmd.Context(), appContextKey{}, app)
 			cmd.SetContext(ctx)
 			return nil
@@ -99,7 +105,7 @@ func newRootCommand() *cobra.Command {
 	return cmd
 }
 
-func bootstrapApp(ctx context.Context) (*App, error) {
+func bootstrapApp(ctx context.Context, session logging.Session) (*App, error) {
 	cfg, err := loadConfig()
 	if err != nil {
 		return nil, err

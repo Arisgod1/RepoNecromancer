@@ -89,7 +89,7 @@ func (e *Engine) Run(ctx context.Context, req QueryRequest) (QueryResult, error)
 			return result, fmt.Errorf("permission engine failed for %s: %w", action.ToolName, err)
 		}
 
-		logging.Default().Audit("tool_invocation", map[string]any{
+		logging.Default().WithSession(req.SessionID).Audit("tool_invocation", map[string]any{
 			"session_id": req.SessionID,
 			"tool":       action.ToolName,
 			"decision":   decision.Behavior,
