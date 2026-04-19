@@ -1,0 +1,11 @@
+name: event-logger
+type: subscriber
+enabled: true
+tool:
+  name: log-events
+  message: "Events are being logged"
+config:
+  events:
+    - action:started
+    - action:completed
+    - session:completed

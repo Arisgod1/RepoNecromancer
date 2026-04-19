@@ -14,6 +14,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Extension is implemented by extensions that want to subscribe to events.
+type Extension interface {
+	Subscribe(bus *EventBus)
+}
+
 type Manifest struct {
 	Name    string         `json:"name" yaml:"name"`
 	Type    string         `json:"type" yaml:"type"`
@@ -33,13 +38,28 @@ type LoadResult struct {
 }
 
 type Loader struct {
+	bus *EventBus
 }
 
 func NewLoader() *Loader {
-	return &Loader{}
+	return &Loader{bus: NewEventBus()}
 }
 
+func (l *Loader) Bus() *EventBus {
+	return l.bus
+}
+
+// Load loads extensions from dir and optionally calls Subscribe if the tool implements Extension.
 func (l *Loader) Load(ctx context.Context, dir string) LoadResult {
+	return l.loadExt(ctx, dir, true)
+}
+
+// LoadTools loads extensions without calling Subscribe (tools only).
+func (l *Loader) LoadTools(ctx context.Context, dir string) LoadResult {
+	return l.loadExt(ctx, dir, false)
+}
+
+func (l *Loader) loadExt(ctx context.Context, dir string, callSubscribe bool) LoadResult {
 	if strings.TrimSpace(dir) == "" {
 		return LoadResult{}
 	}
@@ -100,6 +120,11 @@ func (l *Loader) Load(ctx context.Context, dir string) LoadResult {
 				mu.Unlock()
 				return
 			}
+			if callSubscribe {
+				if ext, ok := tool.(Extension); ok {
+					ext.Subscribe(l.bus)
+				}
+			}
 			mu.Lock()
 			toolsOut = append(toolsOut, tool)
 			mu.Unlock()
@@ -147,8 +172,62 @@ func toolFromManifest(m Manifest) (tools.Tool, error) {
 			name:    m.Tool.Name,
 			message: m.Tool.Message,
 		}, nil
+	case "subscriber":
+		return newEventSubscriberTool(m)
 	default:
 		return nil, fmt.Errorf("unsupported extension type %q", m.Type)
+	}
+}
+
+// eventSubscriberTool is a Tool + Extension that logs events.
+type eventSubscriberTool struct {
+	name    string
+	message string
+	events  []EventType
+}
+
+func newEventSubscriberTool(m Manifest) (*eventSubscriberTool, error) {
+	name := m.Tool.Name
+	if name == "" {
+		name = m.Name
+	}
+	events := parseEventList(m.Config["events"])
+	return &eventSubscriberTool{
+		name:    name,
+		message: m.Tool.Message,
+		events:  events,
+	}, nil
+}
+
+func parseEventList(v any) []EventType {
+	var out []EventType
+	if arr, ok := v.([]any); ok {
+		for _, e := range arr {
+			if s, ok := e.(string); ok {
+				out = append(out, EventType(s))
+			}
+		}
+	}
+	return out
+}
+
+func (t *eventSubscriberTool) Name() string {
+	return t.name
+}
+
+func (t *eventSubscriberTool) Run(_ context.Context, _ map[string]any) (map[string]any, error) {
+	return map[string]any{
+		"message": t.message,
+		"events":  t.events,
+	}, nil
+}
+
+// Subscribe implements Extension.
+func (t *eventSubscriberTool) Subscribe(bus *EventBus) {
+	for _, ev := range t.events {
+		bus.Subscribe(t.name, func(e Event) {
+			// default logging callback
+		}, []EventType{ev})
 	}
 }
 
@@ -165,4 +244,9 @@ func (t *staticMessageTool) Run(_ context.Context, _ map[string]any) (map[string
 	return map[string]any{
 		"message": t.message,
 	}, nil
+}
+
+// Subscribe implements Extension.
+func (t *staticMessageTool) Subscribe(_ *EventBus) {
+	// staticMessageTool does not subscribe to events by default
 }
