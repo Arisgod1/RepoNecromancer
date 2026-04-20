@@ -4,43 +4,41 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-green.svg)](https://github.com/repo-necromancer/necro)
 
-**Repo Necromancer** is an AI-powered CLI tool that performs autopsies on abandoned GitHub repositories, determines the cause of death, and generates detailed reincarnation plans to bring them back to life.
+**Repo Necromancer** 是一款由 AI 驱动的 CLI 工具，用于对已废弃的 GitHub 仓库进行“尸检”，判定其“死亡原因”，并生成详细的“重生”计划，帮助项目重获新生。
 
 ---
 
-## Table of Contents
+## 目录
 
-- [Features](#features)
-- [Architecture](#architecture)
-- [Configuration](#configuration)
-- [Environment Variables](#environment-variables)
+- [功能](#功能)
+- [架构](#架构)
+- [安装](#安装)
+- [配置](#配置)
+- [环境变量](#环境变量)
+- [使用方法](#使用方法)
   - [`necro scan`](#necro-scan)
   - [`necro autopsy`](#necro-autopsy)
   - [`necro report`](#necro-report)
   - [`necro reborn`](#necro-reborn)
-  - [`necro cache`](#necro-cache)
-- [Output Formats](#output-formats)
-- [Examples](#examples)
+- [输出格式](#输出格式)
+- [示例](#示例)
 
 ---
 
-## Features
+## 功能
 
-- **Repository Scanning** — Discover abandoned repositories based on inactivity threshold, stars, language, and topics
-- **Death-Cause Autopsy** — Deep analysis of issues, PRs, and commits to determine why a repo died
-- **Cause Scoring Taxonomy** — Seven failure modes: maintainer burnout, architecture debt, ecosystem displacement, security trust collapse, governance failure, funding absence, and scope drift
-- **AI-Enhanced Analysis** — Optional DashScope LLM integration for richer cause scoring and reincarnation planning
-- **Reincarnation Plans** — Structured 90-day revival blueprints with architecture recommendations, migration steps, risks, and milestones
-- **Extensible Tool Registry** — Built-in GitHub and web tools, plus custom extension loading
-- **Extension System** — Load custom tools at runtime; subscribe to lifecycle events (action:started, permission:decision, action:completed, session:completed, budget:warning)
-- **Permission Engine** — Configurable domain/IP allowlisting for safe tool execution
-- **Multiple Output Formats** — JSON, Markdown, and PDF report artifacts
-- **Failure Simulation Tests** — Test permission denial, budget exhaustion, cache degradation, and LLM fallback scenarios
-- **Parallel Startup** — Concurrent API calls, parallel LLM inference, and multi-repo scanning for ~4x speedup
+- **仓库扫描** —— 根据不活跃阈值、Star 数、语言和主题发现被废弃的仓库
+- **死亡原因尸检** —— 深度分析 issues、PRs 与 commits，判断仓库衰亡原因
+- **原因评分分类体系** —— 七类失效模式：维护者倦怠、架构债务、生态位替代、安全信任崩塌、治理失效、资金缺失、范围漂移
+- **AI 增强分析** —— 可选集成 DashScope LLM，提供更丰富的原因评分与重生规划
+- **重生计划** —— 结构化 90 天复兴蓝图，包含架构建议、迁移步骤、风险与里程碑
+- **可扩展工具注册表** —— 内置 GitHub 与 Web 工具，并支持加载自定义扩展
+- **权限引擎** —— 可配置域名/IP 白名单，保障工具执行安全
+- **多种输出格式** —— 支持 JSON 与 Markdown 报告产物
 
 ---
 
-## Architecture
+## 架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -53,7 +51,7 @@
         └─────────────┴──────┬──────┴─────────────┘
                              │
                     ┌────────▼────────┐
-                    │  Query Engine  │  ← Budget-controlled execution
+                    │  Query Engine  │  ← 受预算控制的执行
                     └────────┬────────┘
                              │
         ┌────────────────────┼────────────────────┐
@@ -67,73 +65,45 @@
 └────────────────┘     └─────────────┘
                               │
                     ┌─────────▼──────────┐
-                    │   LLM Client       │  ← DashScope (optional)
-                    │  (qwen3.6-flash)   │
+                    │   LLM Client       │  ← DashScope（可选）
+                    │  (qwen3.6-plus)    │
                     └────────────────────┘
 ```
 
-### Component Overview
+### 组件概览
 
-| Component | Responsibility |
+| 组件 | 职责 |
 |-----------|----------------|
-| **CLI Commands** (`scan`, `autopsy`, `report`, `reborn`) | User-facing entry points |
-| **Query Engine** | Executes tool actions with budget limits (turns, tokens, cost) |
-| **Tool Registry** | Manages built-in GitHub tools, web tools, and loaded extensions |
-| **Permissions Engine** | Enforces domain/IP allowlists and private-network denials |
-| **Network Client** | HTTP client with retry/backoff for tool execution |
-| **LLM Client** | DashScope API client for AI-enhanced cause scoring and reincarnation plans |
-| **Memory Store** | In-memory state management across command invocations |
-| **EventBus** | Pub/sub system for lifecycle event distribution to extensions |
-| **Report Renderer** | Generates JSON, Markdown, and PDF artifact files |
-| **Cache** | File-backed TTLStore at `~/.cache/necro/cache.data` with LRU eviction |
-
-### Architecture Details
-- **Query Engine**: Budget-limited tool orchestration with permission guard
-- **EventBus**: Publish/subscribe for `action:started`, `permission:decision`, `action:completed`, `session:completed`, `budget:warning` events
-- **Extension System**: Plugin architecture via `Subscribe()` method
+| **CLI Commands** (`scan`, `autopsy`, `report`, `reborn`) | 面向用户的入口命令 |
+| **Query Engine** | 在预算限制（轮次、Token、成本）下执行工具操作 |
+| **Tool Registry** | 管理内置 GitHub 工具、Web 工具与已加载扩展 |
+| **Permissions Engine** | 执行域名/IP 白名单与私有网络拒绝策略 |
+| **Network Client** | 为工具执行提供带重试/退避的 HTTP 客户端 |
+| **LLM Client** | DashScope API 客户端，用于 AI 增强原因评分与重生规划 |
+| **Memory Store** | 跨命令调用的内存状态管理 |
+| **Report Renderer** | 生成 JSON 与 Markdown 产物文件 |
 
 ---
 
-## Testing
+## 安装
 
-### Test Coverage
+### 前置要求
 
-| Package | Coverage |
-|---------|----------|
-| internal/permissions | 91.0% |
-| internal/report | 85.8% |
-| internal/logging | 90.9% |
-| internal/state | 89.4% |
-| internal/tools | 27.7% |
-| internal/extensions | 26.2% |
-| internal/query | 26.6% |
-| internal/commands | 23.3% |
+- **Go 1.26.2+**（若从源码构建）
+- **GitHub Personal Access Token**（`GITHUB_TOKEN`）—— 用于仓库 API 访问
+- **DashScope API Key**（`DASHSCOPE_API_KEY`）—— 用于 AI 增强功能（可选）
 
-Run tests: `go test ./... -cover`
-
----
-
-## Installation
-
-### Prerequisites
-
-- **Go 1.26.2+** (if building from source)
-- **GitHub Personal Access Token** (`GITHUB_TOKEN`) — for repository API access
-- **DashScope API Key** (`DASHSCOPE_API_KEY`) — for AI-enhanced features (optional)
-
-### Build from Source
+### 从源码构建
 
 ```bash
-git clone https://github.com/Arisgod1/RepoNecromancer.git
-cd RepoNecromancer
+git clone https://github.com/repo-necromancer/necro.git
+cd necro
 go build -o necro ./cmd/necro
-# The binary is created at ./necro in the current directory
-# Add it to your PATH, or run as ./necro
 ```
 
-### Pre-built Binary
+### 使用预构建二进制
 
-Download the appropriate binary for your platform from the releases page and make it executable:
+从 Releases 页面下载与你的平台匹配的二进制，并赋予可执行权限：
 
 ```bash
 chmod +x necro
@@ -142,15 +112,15 @@ chmod +x necro
 
 ---
 
-## Configuration
+## 配置
 
-Repo Necromancer uses a YAML configuration file. By default, it looks for `config.yaml` in the following order:
+Repo Necromancer 使用 YAML 配置文件。默认按以下顺序查找 `config.yaml`：
 
-1. Path specified by `NECRO_CONFIG` environment variable
-2. `./config.yaml` (current directory)
+1. `NECRO_CONFIG` 环境变量指定的路径
+2. `./config.yaml`（当前目录）
 3. `./configs/config.yaml`
 
-### Default `config.yaml`
+### 默认 `config.yaml`
 
 ```yaml
 app:
@@ -159,20 +129,19 @@ app:
   cache_dir: ./.cache/necro
 
 analysis:
-  default_years: 3      # Default inactivity threshold for scans
-  min_stars: 5000       # Minimum star count for candidate repos
-  max_items: 500        # Maximum issues/PRs/commits to fetch
-  max_evidence: 250     # Maximum evidence items to collect for autopsy (max 2000)
+  default_years: 3      # 扫描的默认不活跃阈值
+  min_stars: 5000       # 候选仓库最小 Star 数
+  max_items: 500        # 最多抓取的 issues/PRs/commits 数量
 
 query:
-  max_turns: 16         # Maximum tool-call turns in a session
-  max_tokens: 0         # 0 = unlimited
-  max_cost: 0           # 0 = unlimited (USD)
+  max_turns: 16         # 单次会话最大工具调用轮次
+  max_tokens: 0         # 0 = 不限
+  max_cost: 0           # 0 = 不限（USD）
 
 network:
-  timeout_ms: 12000     # HTTP request timeout in milliseconds
-  retry_max: 3          # Maximum retry attempts
-  backoff_base_ms: 300   # Base backoff duration (doubles each retry)
+  timeout_ms: 12000     # HTTP 请求超时时间（毫秒）
+  retry_max: 3          # 最大重试次数
+  backoff_base_ms: 300   # 基础退避时长（每次重试翻倍）
   allow_domains:
     - github.com
     - api.github.com
@@ -183,99 +152,99 @@ permissions:
   mode: default        # default | plan | dontAsk | bypass | acceptEdits | auto
 
 tools:
-  deny: []               # List of tool names to disable
+  deny: []               # 需禁用的工具名列表
 
 llm:
-  model: qwen3.6-flash
+  model: qwen3.6-plus
   api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
   timeout_seconds: 300
 ```
 
-### Configuration Precedence
+### 配置优先级
 
-Environment variables override config file values. The prefix `NECRO_` is used for env vars:
+环境变量会覆盖配置文件中的值。环境变量统一使用 `NECRO_` 前缀：
 
-| Config Key | Environment Variable |
+| 配置键 | 环境变量 |
 |------------|---------------------|
 | `llm.model` | `NECRO_LLM_MODEL` |
 | `llm.api_base` | `NECRO_LLM_API_BASE` |
 | `app.output_dir` | `NECRO_APP_OUTPUT_DIR` |
 | `app.log_level` | `NECRO_APP_LOG_LEVEL` |
 
-### Permissions Mode Reference
+### 权限模式说明
 
-| Mode | Description |
+| 模式 | 描述 |
 |------|-------------|
-| `default` | Execute only tools targeting explicitly allowed domains/IPs (default, recommended) |
-| `plan` | Ask for confirmation before executing any tool |
-| `dontAsk` | Execute tools without confirmation (skip prompts) |
-| `bypass` | Bypass all permission checks and execute directly |
-| `acceptEdits` | Accept automatic edits to files without prompting |
-| `auto` | Automatically determine the best behavior |
+| `default` | 仅执行指向明确允许域名/IP 的工具（默认，推荐） |
+| `plan` | 执行任何工具前都请求确认 |
+| `dontAsk` | 执行工具时不请求确认（跳过提示） |
+| `bypass` | 绕过所有权限检查并直接执行 |
+| `acceptEdits` | 自动接受文件修改而不提示 |
+| `auto` | 自动判定最佳行为 |
 
 ---
 
-## Environment Variables
+## 环境变量
 
-| Variable | Required | Description |
+| 变量 | 必需 | 描述 |
 |----------|----------|-------------|
-| `GITHUB_TOKEN` | Recommended | GitHub Personal Access Token for API access. Without it, you hit lower rate limits. |
-| `DASHSCOPE_API_KEY` | Optional | DashScope API key for AI-enhanced analysis and reincarnation planning. |
-| `DASHSCOPE_MODEL` | No | Override the default LLM model (`qwen3.6-flash`). |
-| `DASHSCOPE_API_BASE` | No | Override the DashScope API base URL. |
-| `NECRO_CONFIG` | No | Path to a custom YAML config file. |
+| `GITHUB_TOKEN` | 建议 | 用于 API 访问的 GitHub Personal Access Token。若缺失，将触发更低速率限制。 |
+| `DASHSCOPE_API_KEY` | 可选 | 用于 AI 增强分析与重生规划的 DashScope API Key。 |
+| `DASHSCOPE_MODEL` | 否 | 覆盖默认 LLM 模型（`qwen3.6-plus`）。 |
+| `DASHSCOPE_API_BASE` | 否 | 覆盖 DashScope API 基础 URL。 |
+| `NECRO_CONFIG` | 否 | 自定义 YAML 配置文件路径。 |
 
-### Obtaining a GitHub Token
+### 获取 GitHub Token
 
-1. Go to [GitHub Settings → Personal access tokens](https://github.com/settings/tokens)
-2. Generate a new token (classic)
-3. Select scopes: `repo` (for private repos) or `public_repo` (for public only)
-4. Copy the token and set it as `GITHUB_TOKEN`
+1. 打开 [GitHub Settings → Personal access tokens](https://github.com/settings/tokens)
+2. 生成新 Token（classic）
+3. 选择权限范围：`repo`（私有仓库）或 `public_repo`（仅公开仓库）
+4. 复制 Token，并设置为 `GITHUB_TOKEN`
 
-### Obtaining a DashScope API Key
+### 获取 DashScope API Key
 
-Sign up at [Alibaba Cloud DashScope](https://dashscope.aliyuncs.com/) and generate an API key.
+在 [阿里云 DashScope](https://dashscope.aliyuncs.com/) 注册并生成 API Key。
 
 ---
 
-## Tools
+## 工具
 
-Repo Necromancer provides built-in tools for GitHub API access and web fetching. Tools are executed by the Query Engine under budget controls (turns, tokens, cost).
+Repo Necromancer 提供用于 GitHub API 访问与网页抓取的内置工具。所有工具均由 Query Engine 在预算控制（轮次、Token、成本）下执行。
 
-### GitHub Tools (`github.*`)
+### GitHub 工具（`github.*`）
 
-| Tool | Description | Required Permission |
+| 工具 | 描述 | 所需权限 |
 |------|-------------|---------------------|
-| `github.search_repos` | Search repositories by query, language, stars, last activity | `github.com`, `api.github.com` |
-| `github.get_repo` | Fetch repository metadata and stats | `github.com`, `api.github.com` |
-| `github.list_issues` | List issues with state, labels, and timeline | `github.com`, `api.github.com` |
-| `github.list_pulls` | List pull requests with review state | `github.com`, `api.github.com` |
-| `github.get_commits` | Fetch commit history with author and timestamp | `github.com`, `api.github.com` |
-| `github.list_collaborators` | List repository collaborators and permissions | `github.com`, `api.github.com` |
+| `github.search_repos` | 按查询条件、语言、Star、最近活跃度搜索仓库 | `github.com`, `api.github.com` |
+| `github.get_repo` | 获取仓库元数据与统计信息 | `github.com`, `api.github.com` |
+| `github.list_issues` | 列出 issues（含状态、标签与时间线） | `github.com`, `api.github.com` |
+| `github.list_pulls` | 列出 pull requests（含评审状态） | `github.com`, `api.github.com` |
+| `github.get_commits` | 获取提交历史（含作者与时间戳） | `github.com`, `api.github.com` |
+| `github.list_collaborators` | 列出仓库协作者与权限 | `github.com`, `api.github.com` |
 
-### Web Tools (`web.*`)
+### Web 工具（`web.*`）
 
-| Tool | Description | Required Permission |
+| 工具 | 描述 | 所需权限 |
 |------|-------------|---------------------|
-| `web.fetch` | HTTP GET a URL and return content | Matching `allow_domains` entry |
-| `web.search` | Perform a web search via configured endpoint | Matching `allow_domains` entry |
+| `web.fetch` | 对 URL 发起 HTTP GET 并返回内容 | 与 `allow_domains` 匹配的条目 |
+| `web.search` | 通过已配置端点执行 Web 搜索 | 与 `allow_domains` 匹配的条目 |
 
-### Permission Levels
+### 权限级别
 
-Tools are gated by the Permissions Engine based on `permissions.mode`:
+工具会根据 `permissions.mode` 受 Permissions Engine 管控：
 
-| Mode | Behavior |
+| 模式 | 行为 |
 |------|----------|
-| `default` | Tool executes only if its target domain/IP is in `network.allow_domains` (default, recommended) |
-| `plan` | Ask for confirmation before executing any tool |
-| `dontAsk` | Execute tools without confirmation (skip prompts) |
-| `bypass` | Bypass all permission checks and execute directly |
-| `acceptEdits` | Accept automatic edits to files without prompting |
-| `auto` | Automatically determine the best behavior |
+| `default` | 仅当目标域名/IP 在 `network.allow_domains` 中时执行工具（默认，推荐） |
+| `plan` | 执行任何工具前都请求确认 |
+| `dontAsk` | 执行工具时不请求确认（跳过提示） |
+| `bypass` | 绕过所有权限检查并直接执行 |
+| `acceptEdits` | 自动接受文件修改而不提示 |
+| `auto` | 自动判定最佳行为 |
 
-### Disabling Tools
+### 禁用工具
 
-Use `tools.deny` to disable specific tools by name:
+使用 `tools.deny` 按名称禁用特定工具：
 
 ```yaml
 tools:
@@ -286,81 +255,76 @@ tools:
 
 ---
 
-## Observability
+## 可观测性
 
-Repo Necromancer emits structured log fields and maintains an audit trail for all tool executions and LLM calls.
+Repo Necromancer 会输出结构化日志字段，并为所有工具执行与 LLM 调用维护审计轨迹。
 
-### Structured Log Fields
+### 结构化日志字段
 
-| Field | Type | Description |
+| 字段 | 类型 | 描述 |
 |-------|------|-------------|
-| `trace_id` | string | Unique execution ID shared across all events in a session |
-| `session_id` | string | CLI invocation session identifier |
-| `command` | string | Top-level command (`scan`, `autopsy`, `report`, `reborn`) |
-| `target` | string | Target repository (`owner/repo`) |
-| `tool_name` | string | Tool that was invoked |
-| `tool_domain` | string | Target domain for the tool call |
-| `allowed` | bool | Whether the Permissions Engine allowed the call |
-| `turn` | int | Current turn number in the Query Engine budget |
-| `tokens_used` | int | Cumulative token usage for the LLM session |
-| `cost_usd` | float | Cumulative cost in USD |
+| `trace_id` | string | 会话内所有事件共享的唯一执行 ID |
+| `session_id` | string | CLI 调用会话标识 |
+| `command` | string | 顶层命令（`scan`, `autopsy`, `report`, `reborn`） |
+| `target` | string | 目标仓库（`owner/repo`） |
+| `tool_name` | string | 被调用的工具 |
+| `tool_domain` | string | 工具调用的目标域名 |
+| `allowed` | bool | 权限引擎是否允许该调用 |
+| `turn` | int | Query Engine 预算中的当前轮次 |
+| `tokens_used` | int | LLM 会话累计 Token 使用量 |
+| `cost_usd` | float | 累计美元成本 |
 
-### Audit Trail
+### 审计轨迹
 
-Each command run produces an `audit.log` entry (written to `cache_dir/audit/`):
+每次命令运行都会产出一条 `audit.log` 记录（写入 `cache_dir/audit/`）：
 
 ```
 {"ts":"2026-04-19T13:45:00Z","trace_id":"abc123","session":"sess-001","command":"autopsy","target":"owner/repo","tool":"github.list_issues","allowed":true,"turn":3,"ms":142}
 {"ts":"2026-04-19T13:45:01Z","trace_id":"abc123","session":"sess-001","command":"autopsy","target":"owner/repo","tool":"github.list_issues","allowed":true,"turn":4,"ms":89}
 ```
 
-### Log Level Configuration
+### 日志级别配置
 
-| Level | Use Case |
+| 级别 | 使用场景 |
 |-------|----------|
-| `error` | Production; logs errors and denied tool calls only |
-| `info` | Default; includes command progress and tool summaries |
-| `debug` | Development; includes all tool inputs/outputs and LLM prompts/responses |
-| `trace` | Verbose; full HTTP request/response bodies and permission checks |
+| `error` | 生产环境；仅记录错误与被拒绝的工具调用 |
+| `info` | 默认；包含命令进度与工具摘要 |
+| `debug` | 开发环境；包含所有工具输入/输出与 LLM 提示/响应 |
+| `trace` | 详细模式；完整 HTTP 请求/响应体与权限检查 |
 
 ---
 
-## Usage
+## 使用方法
 
 ### `necro scan`
 
-Discover candidate dead repositories matching inactivity and popularity criteria.
+按不活跃和热度标准发现候选“死亡”仓库。
 
 ```bash
 necro scan --years <N> --min-stars <N> [flags]
 ```
 
-**Flags:**
+**参数：**
 
-| Flag | Type | Required | Description |
+| 参数 | 类型 | 必需 | 描述 |
 |------|------|----------|-------------|
-| `--years` | int | Yes | Inactivity threshold in years |
-| `--min-stars` | int | Yes | Minimum star count |
-| `--language` | string | No | Filter by programming language (e.g., `Go`, `Python`) |
-| `--topic` | string[] | No | Filter by GitHub topic (repeatable) |
-| `--limit` | int | No | Maximum results to return (default: 20, max: 100) |
-| `--repos` | string | No | Comma-separated list of `owner/repo` to scan (default: discover via API) |
-| `--parallel` | int | No | Concurrency limit for multi-repo scanning (default: 4) |
+| `--years` | int | 是 | 不活跃阈值（年） |
+| `--min-stars` | int | 是 | 最小 Star 数 |
+| `--language` | string | 否 | 按编程语言筛选（如 `Go`、`Python`） |
+| `--topic` | string[] | 否 | 按 GitHub Topic 筛选（可重复） |
+| `--limit` | int | 否 | 返回结果上限（默认：20，最大：100） |
 
-**Example:**
+**示例：**
 
 ```bash
-export GITHUB_TOKEN=ghp_yo...here
+export GITHUB_TOKEN=ghp_your_token_here
 necro scan --years 3 --min-stars 5000 --language Go --limit 10
-
-# Multi-repo scanning
-necro scan --repos owner/repo1,owner/repo2 --parallel 4
 ```
 
-**Sample Output:**
+**示例输出：**
 
 ```
-Ranked dead repository candidates (5):
+排序后的死亡仓库候选（5）：
  1. ownerA/abandoned-lib              stars=12400  inactivity_years=4.23 language=Go
  2. ownerB/old-framework              stars=8900   inactivity_years=3.87 language=Go
  3. ownerC/deprecated-tool            stars=6200   inactivity_years=5.12 language=Go
@@ -370,52 +334,34 @@ Ranked dead repository candidates (5):
 
 ### `necro autopsy`
 
-Perform a detailed death-cause analysis on a specific repository.
+对指定仓库执行详细的死亡原因分析。
 
 ```bash
 necro autopsy <owner/repo> --years <N> [flags]
 ```
 
-**Flags:**
+**参数：**
 
-| Flag | Type | Required | Description |
+| 参数 | 类型 | 必需 | 描述 |
 |------|------|----------|-------------|
-| `<owner/repo>` | string | Yes | Target repository in `owner/repo` format |
-| `--years` | int | Yes | Inactivity threshold context in years |
-| `--since` | string | No | Evidence lower bound (RFC3339 or `YYYY-MM-DD`) |
-| `--until` | string | No | Evidence upper bound (RFC3339 or `YYYY-MM-DD`) |
-| `--max-items` | int | No | Maximum issues/PRs/commits to fetch (default: 200) |
-| `--mode` | string | No | Fetch mode: `full` (default), `sample` (memory-efficient), `lite` (fast) |
-| `--max-evidence` | int | No | Maximum evidence items to collect (default: 250, max: 2000) |
+| `<owner/repo>` | string | 是 | 目标仓库，格式为 `owner/repo` |
+| `--years` | int | 是 | 不活跃阈值上下文（年） |
+| `--since` | string | 否 | 证据时间下界（RFC3339 或 `YYYY-MM-DD`） |
+| `--until` | string | 否 | 证据时间上界（RFC3339 或 `YYYY-MM-DD`） |
+| `--max-items` | int | 否 | 最多抓取 issues/PRs/commits 数量（默认：200） |
 
-**Memory Modes:**
-
-| Mode | Description |
-|------|-------------|
-| `full` (default) | Fetch all issues, PRs, and commits — original behavior |
-| `sample` | Memory-efficient: fetches recent 2-year commits + issues/PRs, uses streaming min-heap to keep only top-N evidence |
-| `lite` | Fast mode: repository metadata only + recent 30 days activity, uses rule-based cause scoring |
-
-Sample mode output includes a sampling bias warning:
-
-```
-Mode: sample (memory-efficient, sampled 500 recent commits + recent 2yr issues/PRs)
-Evidence indexed: 250 (capped from ~3000 total)
-Sampling bias: Recent activity bias — historical patterns may be underrepresented
-```
-
-**Example:**
+**示例：**
 
 ```bash
 necro autopsy owner/repo-name --years 3 --max-items 300
 ```
 
-**Sample Output:**
+**示例输出：**
 
 ```
-Autopsy for owner/repo-name
-Stars: 12400 | Last commit: 2021-03-15T10:30:00Z
-Cause scores:
+owner/repo-name 的尸检结果
+Stars: 12400 | 最近提交: 2021-03-15T10:30:00Z
+原因评分：
 - maintainer_burnout score=0.72 confidence=0.65
 - architecture_debt score=0.55 confidence=0.48
 - governance_failure score=0.30 confidence=0.28
@@ -423,165 +369,118 @@ Cause scores:
 - funding_absence score=0.15 confidence=0.25
 - security_trust_collapse score=0.10 confidence=0.20
 - scope_drift score=0.08 confidence=0.22
-Evidence indexed: 142
+已索引证据：142
 ```
 
-**Cause Score Taxonomy:**
+**原因评分分类体系：**
 
-| Cause | Description |
+| 原因 | 描述 |
 |-------|-------------|
-| `maintainer_burnout` | Maintainer overwhelmed, no time, explicitly abandoned |
-| `architecture_debt` | Legacy code, refactor needs, technical debt mentions |
-| `ecosystem_displacement` | Superseded by newer framework, migration away |
-| `security_trust_collapse` | CVE, vulnerability, security exploit |
-| `governance_failure` | Maintainer conflict, bus factor, decision deadlock |
-| `funding_absence` | No funding, sponsorship, sustainability issues |
-| `scope_drift` | Scope creep, feature chaos, roadmap drift |
+| `maintainer_burnout` | 维护者精力透支、无暇维护、明确声明弃坑 |
+| `architecture_debt` | 旧代码负担、需要重构、技术债相关表述 |
+| `ecosystem_displacement` | 被更新框架替代、生态迁移导致边缘化 |
+| `security_trust_collapse` | CVE、漏洞或安全事件导致信任受损 |
+| `governance_failure` | 维护者冲突、Bus Factor 低、决策僵局 |
+| `funding_absence` | 缺乏资金、赞助或可持续性问题 |
+| `scope_drift` | 范围蔓延、功能混乱、路线图偏离 |
 
 ---
 
 ### `necro report`
 
-Run the full end-to-end pipeline and generate complete report artifacts (autopsy + reincarnation plan).
+执行完整端到端流水线并生成完整报告产物（尸检 + 重生计划）。
 
 ```bash
 necro report <owner/repo> [flags]
 ```
 
-**Flags:**
+**参数：**
 
-| Flag | Type | Required | Description |
+| 参数 | 类型 | 必需 | 描述 |
 |------|------|----------|-------------|
-| `<owner/repo>` | string | Yes | Target repository |
-| `--format` | string | No | Output format: `markdown`, `json`, `pdf`, `pdf+markdown`, or `both` (default: `both`) |
-| `--out` | string | No | Output directory (default: `./out` from config) |
-| `--years` | int | No | Inactivity threshold (default: from config `analysis.default_years`) |
-| `--since` | string | No | Evidence lower bound |
-| `--until` | string | No | Evidence upper bound |
-| `--max-items` | int | No | Maximum artifacts to fetch (default: from config) |
-| `--target-stack` | string | No | Override target implementation stack |
-| `--constraints` | string | No | Constraint text or file path for migration design |
+| `<owner/repo>` | string | 是 | 目标仓库 |
+| `--format` | string | 否 | 输出格式：`markdown`、`json` 或 `both`（默认：`both`） |
+| `--out` | string | 否 | 输出目录（默认：配置中的 `./out`） |
+| `--years` | int | 否 | 不活跃阈值（默认：配置 `analysis.default_years`） |
+| `--since` | string | 否 | 证据时间下界 |
+| `--until` | string | 否 | 证据时间上界 |
+| `--max-items` | int | 否 | 抓取产物上限（默认：配置值） |
+| `--target-stack` | string | 否 | 覆盖目标实现技术栈 |
+| `--constraints` | string | 否 | 迁移设计约束文本或文件路径 |
 
-**Example:**
+**示例：**
 
 ```bash
 necro report owner/repo-name --format both --target-stack "Rust + Actix + PostgreSQL + Docker"
 ```
 
-**Generated Artifacts:**
+**生成产物：**
 
 ```
 out/
-├── report.json       # Full structured report with all fields
-├── report.md         # Human-readable Markdown summary
-├── report.pdf        # PDF export of the report
-└── evidence-index.json  # Indexed evidence items
+├── report.json       # 包含全部字段的完整结构化报告
+├── report.md        # 面向阅读的 Markdown 摘要
+└── evidence-index.json  # 已索引证据项
 ```
 
 ---
 
 ### `necro reborn`
 
-Generate a focused 2026 reincarnation plan with architecture, migration steps, risks, and milestones.
+生成聚焦 2026 的重生计划，涵盖架构、迁移步骤、风险与里程碑。
 
 ```bash
 necro reborn <owner/repo> [flags]
 ```
 
-**Flags:**
+**参数：**
 
-| Flag | Type | Required | Description |
+| 参数 | 类型 | 必需 | 描述 |
 |------|------|----------|-------------|
-| `<owner/repo>` | string | Yes | Target repository |
-| `--format` | string | No | Output format: `markdown`, `json`, `pdf`, `pdf+markdown`, or `both` (default: `both`) |
-| `--out` | string | No | Output directory (default: `./out`) |
-| `--years` | int | No | Inactivity threshold (default: from config) |
-| `--target-stack` | string | No | Target implementation stack |
-| `--constraints` | string | No | Constraint text or file path |
+| `<owner/repo>` | string | 是 | 目标仓库 |
+| `--target-stack` | string | 否 | 目标实现技术栈 |
+| `--constraints` | string | 否 | 约束文本或文件路径 |
 
-**Example:**
+**示例：**
 
 ```bash
 necro reborn owner/repo-name --target-stack "Go 1.26 + gRPC + Postgres + Kubernetes"
-necro reborn owner/repo --format markdown --out ./plans --years 5 --constraints ./constraints.txt
 ```
 
-**Sample Output:**
+**示例输出：**
 
 ```
-Reborn plan for owner/repo-name
-Target stack: Go 1.26 + gRPC + Postgres + Kubernetes
-Architecture:
-- Domain core: typed business rules and explicit invariants.
-- Interface adapters: CLI/API boundary with strict input validation.
-- Data layer: migration-safe persistence + cache invalidation controls.
-- Observability: structured logs, trace IDs, budget telemetry.
-- Security: permission gate around all external tool/network operations.
-Migration:
-- Week 1-2: freeze feature surface and codify compatibility contract.
-- Week 3-4: implement modular core and adapter shells behind feature gates.
-- Week 5-8: backfill parity tests + staged data migration.
-- Week 9-12: canary rollout with stop-loss metrics and rollback playbook.
-Milestones:
-- Day 1-30: Stabilize architecture foundation
-  Deliverables: Compatibility spec, Core module skeleton, Permission matrix
-- Day 31-60: Complete migration-critical flows
-  Deliverables: Feature parity map, Data migration rehearsal, Canary environment
-- Day 61-90: Ship guarded production rollout
-  Deliverables: Operational runbook, Stop-loss alarms, Public release notes
-Risks:
-- [high] Scope expansion beyond parity rewrite | stop-loss: Reject net-new features until parity baseline reaches 90%.
-- [medium] Migration churn destabilizes users | stop-loss: Run compatibility layer with telemetry.
-- [high] Maintainer bandwidth remains constrained | stop-loss: Define ownership map + rotate on-call before launch.
-```
-
----
-
-### `necro cache`
-
-Manage the persistent file-backed TTL cache used for GitHub API responses.
-
-```bash
-necro cache <subcommand>
-```
-
-**Subcommands:**
-
-| Command | Description |
-|---------|-------------|
-| `necro cache stats` | Show cache statistics (total, active, expired keys) |
-| `necro cache list` | List all cached keys with their TTL status |
-| `necro cache clear` | Clear all cache entries |
-
-**TTL Policies:**
-
-| Response Type | TTL |
-|---------------|-----|
-| Normal entries (searches, issues, PRs, commits) | 5 minutes |
-| Successful GitHub repo lookups (HIT) | 2 minutes |
-| 404 dead repos | 1 hour |
-| Errors / rate limits | 5 minutes |
-
-The cache is file-backed (stored in `~/.cache/necro/` or the configured `cache_dir`) — so `necro cache` commands persist across CLI invocations.
-
-**Example:**
-
-```bash
-necro cache stats
-# Cache Statistics:
-#   Total keys:   12
-#   Active keys: 8
-#   Expired keys: 4
-
-necro cache clear --force
-# Cache cleared (12 entries removed).
+owner/repo-name 的重生计划
+目标技术栈：Go 1.26 + gRPC + Postgres + Kubernetes
+架构：
+- 领域核心：类型化业务规则与显式不变量。
+- 接口适配层：CLI/API 边界，执行严格输入校验。
+- 数据层：可安全迁移的持久化 + 缓存失效控制。
+- 可观测性：结构化日志、trace ID、预算遥测。
+- 安全：对所有外部工具/网络操作设置权限闸门。
+迁移：
+- 第 1-2 周：冻结功能表面并固化兼容性契约。
+- 第 3-4 周：在特性开关后实现模块化核心与适配层外壳。
+- 第 5-8 周：补齐一致性测试并分阶段执行数据迁移。
+- 第 9-12 周：以金丝雀发布推进，并配套止损指标与回滚手册。
+里程碑：
+- Day 1-30：稳定架构基础
+  交付物：兼容性规范、核心模块骨架、权限矩阵
+- Day 31-60：完成迁移关键流程
+  交付物：功能对等映射、数据迁移演练、金丝雀环境
+- Day 61-90：发布受控生产上线
+  交付物：运维 Runbook、止损告警、公开发布说明
+风险：
+- [high] 对等重写之外的范围扩张 | 止损：在对等基线达到 90% 前拒绝新增功能。
+- [medium] 迁移波动影响用户稳定性 | 止损：运行带遥测的兼容层。
+- [high] 维护者带宽仍受限 | 止损：上线前明确所有权映射并轮值 on-call。
 ```
 
 ---
 
-## Output Formats
+## 输出格式
 
-### JSON Report Structure
+### JSON 报告结构
 
 ```json
 {
@@ -645,40 +544,40 @@ necro cache clear --force
 }
 ```
 
-### Markdown Report
+### Markdown 报告
 
-Markdown reports include:
-- Executive summary with key metrics
-- Cause-of-death analysis with confidence scores
-- Evidence timeline
-- Reincarnation plan with 90-day milestones
-- Risk register with stop-loss actions
+Markdown 报告包含：
+- 关键指标执行摘要
+- 带置信度分数的死亡原因分析
+- 证据时间线
+- 包含 90 天里程碑的重生计划
+- 带止损动作的风险清单
 
 ---
 
-## Examples
+## 示例
 
-### Complete Workflow
+### 完整工作流
 
 ```bash
-# 1. Set up environment
+# 1. 设置环境
 export GITHUB_TOKEN=ghp_your_token
 export DASHSCOPE_API_KEY=your_dashscope_key
 
-# 2. Discover candidate dead repos
+# 2. 发现候选死亡仓库
 necro scan --years 3 --min-stars 5000 --language Python --limit 20
 
-# 3. Autopsy a specific candidate
+# 3. 对某个候选仓库进行尸检
 necro autopsy someuser/some-repo --years 3
 
-# 4. Generate full report with reincarnation plan
+# 4. 生成包含重生计划的完整报告
 necro report someuser/some-repo --format both --out ./reports
 
-# 5. Generate focused reincarnation plan only
+# 5. 仅生成聚焦重生计划
 necro reborn someuser/some-repo --target-stack "Rust + Actix" --constraints ./constraints.txt
 ```
 
-### Using a Constraints File
+### 使用约束文件
 
 ```bash
 # constraints.txt
@@ -692,7 +591,7 @@ Budget: $0 (open-source only).
 necro reborn owner/repo --constraints ./constraints.txt
 ```
 
-### Pipeline with Custom Config
+### 使用自定义配置运行流水线
 
 ```bash
 export NECRO_CONFIG=/path/to/custom-config.yaml
@@ -701,52 +600,16 @@ necro report owner/repo --format json --out /tmp/necro-reports
 
 ---
 
-## Changelog
+## 许可证
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-### [Unreleased]
-
-#### Added
-
-- **i18n support** (`f0d5a68`) — Chinese/English reports, default zh-CN
-  - 新增 i18n 国际化引擎，默认中文输出
-  - 新增 internal/i18n/ 目录，含 zh-CN.json 和 en-US.json 两套翻译
-  - renderer 所有标题和标签支持中英文切换
-  - 新增 --lang flag 和 config.yaml language 配置项
-- **cmd/necro/main.go entry point** (`5028355`) — 关键修复：cmd/necro/main.go 在磁盘上存在但从未被 git track
-- **large-repo memory mode** (`0f81de8`) — --mode full/sample/lite 三种模式, --max-evidence flag, min-heap streaming
-- **parallel startup** (`23aaeaa`) — errgroup 并行 GitHub API calls, parallel LLM inference, worker pool scanning
-- **TTL + LRU cache** (`1f24ded`) — MemoryStore 新增 TTL 过期和 LRU 驱逐策略
-- **Extension interface** (`9048ded`) — Subscribe() 方法支持 5 种生命周期事件订阅
-- **PDF export** (`d87b37c`) — gofpdf 支持纯 Go PDF 生成 (format=pdf, pdf+markdown, both)
-- **Failure simulation tests** (`7a1ef7b`) — TestPermissionDenial, TestBudgetExhaustion, TestCacheDegradation, TestLLMGracefulDegradation
-- **Unit tests** (`6ea34b4`) — logging/state/tools/extensions 单元测试 (覆盖率 27.7%-90.9%)
-
-#### Fixed
-
-- **persistent cache** (`b5c1ef1`) — GlobalCache() 改为文件持久化 (~/.cache/necro/cache.data)
-- **clone URL** (`7ad9705`) — 修复 README clone URL 和二进制路径说明
-
-#### Documentation
-
-- **README updates** (`2da5214`) — 缓存、large-repo mode、PDF 导出、EventBus 文档
+MIT License —— 详见 [LICENSE](LICENSE)。
 
 ---
 
-## License
+## 贡献
 
-MIT License — see [LICENSE](LICENSE) for details.
+欢迎贡献。请通过 issue 或 pull request 提交改进建议。
 
----
+## 支持
 
-## Contributing
-
-Contributions are welcome. Please open an issue or submit a pull request with improvements.
-
-## Support
-
-For questions and issues, please open a GitHub issue at [https://github.com/repo-necromancer/necro](https://github.com/repo-necromancer/necro).
+如有问题，请在 GitHub 提交 issue：[https://github.com/repo-necromancer/necro](https://github.com/repo-necromancer/necro)。

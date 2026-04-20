@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.26.2-blue)](https://golang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-green.svg)](https://github.com/repo-necromancer/necro)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-green.svg)](https://github.com/Arisgod1/RepoNecromancer)
 
 **Repo Necromancer** 是一款由 AI 驱动的 CLI 工具，用于对已废弃的 GitHub 仓库进行“尸检”，判定其“死亡原因”，并生成详细的“重生”计划，帮助项目重获新生。
 
@@ -96,7 +96,7 @@
 ### 从源码构建
 
 ```bash
-git clone https://github.com/repo-necromancer/necro.git
+git clone https://github.com/Arisgod1/RepoNecromancer.git
 cd necro
 go build -o necro ./cmd/necro
 ```
@@ -598,6 +598,38 @@ export NECRO_CONFIG=/path/to/custom-config.yaml
 necro report owner/repo --format json --out /tmp/necro-reports
 ```
 
+## 变更日志
+
+本文档记录本项目的所有重要变更。
+
+格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
+
+### [未发布]
+
+#### 新增
+
+- **i18n 国际化** (`f0d5a68`) — 中英文报告输出，默认中文
+  - 新增 internal/i18n/ 目录，含 zh-CN.json 和 en-US.json 两套翻译
+  - renderer 所有标题和标签支持中英文切换
+  - 新增 --lang flag 和 config.yaml language 配置项
+- **cmd/necro/main.go 入口点** (`5028355`) — 关键修复：磁盘上存在但从未被 git track
+- **大仓库内存模式** (`0f81de8`) — --mode full/sample/lite 三种模式，--max-evidence flag，min-heap 流式处理
+- **并行启动** (`23aaeaa`) — errgroup 并行 GitHub API 调用，parallel LLM 推理，worker pool 扫描
+- **TTL + LRU 缓存** (`1f24ded`) — MemoryStore 新增 TTL 过期和 LRU 驱逐策略
+- **Extension 接口** (`9048ded`) — Subscribe() 方法支持 5 种生命周期事件订阅
+- **PDF 导出** (`d87b37c`) — gofpdf 支持纯 Go PDF 生成（format=pdf, pdf+markdown, both）
+- **故障模拟测试** (`7a1ef7b`) — TestPermissionDenial、TestBudgetExhaustion、TestCacheDegradation、TestLLMGracefulDegradation
+- **单元测试** (`6ea34b4`) — logging/state/tools/extensions 单元测试（覆盖率 27.7%-90.9%）
+
+#### 修复
+
+- **持久化缓存** (`b5c1ef1`) — GlobalCache() 改为文件持久化（~/.cache/necro/cache.data）
+- **clone URL** (`7ad9705`) — 修复 README clone URL 和二进制路径说明
+
+#### 文档
+
+- **README 更新** (`2da5214`) — 缓存、large-repo mode、PDF 导出、EventBus 文档
+
 ---
 
 ## 许可证
@@ -612,4 +644,4 @@ MIT License —— 详见 [LICENSE](LICENSE)。
 
 ## 支持
 
-如有问题，请在 GitHub 提交 issue：[https://github.com/repo-necromancer/necro](https://github.com/repo-necromancer/necro)。
+如有问题，请在 GitHub 提交 issue：[https://github.com/Arisgod1/RepoNecromancer](https://github.com/Arisgod1/RepoNecromancer)。
