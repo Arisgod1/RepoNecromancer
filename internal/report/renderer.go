@@ -13,6 +13,23 @@ import (
 	"github.com/repo-necromancer/necro/internal/i18n"
 )
 
+var fontBytes []byte
+
+func init() {
+	// Load Arial Unicode font for CJK character support in PDF generation
+	// Fallback paths for different macOS font locations
+	fontPaths := []string{
+		"/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+		"/System/Library/Fonts/Arial Unicode.ttf",
+	}
+	for _, path := range fontPaths {
+		if data, err := os.ReadFile(path); err == nil {
+			fontBytes = data
+			break
+		}
+	}
+}
+
 type Renderer struct{}
 
 func NewRenderer() *Renderer {
@@ -101,16 +118,27 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.SetMargins(15, 15, 15)
 	pdf.AddPage()
 
+	// Register CJK-capable font (both regular and bold styles from TTC)
+	if len(fontBytes) > 0 {
+		pdf.AddUTF8FontFromBytes("ArialUnicode", "", fontBytes)
+		pdf.AddUTF8FontFromBytes("ArialUnicode", "B", fontBytes)
+	}
+
+	fontFamily := "Arial"
+	if len(fontBytes) > 0 {
+		fontFamily = "ArialUnicode"
+	}
+
 	// Title
-	pdf.SetFont("Arial", "B", 18)
+	pdf.SetFont(fontFamily, "B", 18)
 	pdf.MultiCell(0, 10, t("app_title"), "", "C", false)
 	pdf.Ln(5)
 
 	// Section 1: Project profile
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "1. "+t("section1_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 10)
+	pdf.SetFont(fontFamily, "", 10)
 	pdf.Cell(0, 5, fmt.Sprintf("%s: %s", t("repository"), rep.Repository))
 	pdf.Ln(5)
 	pdf.Cell(0, 5, fmt.Sprintf("%s: %s", t("snapshot_date"), rep.SnapshotDate))
@@ -121,18 +149,18 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(6)
 
 	// Section 2: Death qualification criteria
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "2. "+t("section2_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 10)
+	pdf.SetFont(fontFamily, "", 10)
 	pdf.Cell(0, 5, fmt.Sprintf("%s: %d", t("inactivity_threshold_years"), rep.DeathThresholdYears))
 	pdf.Ln(6)
 
 	// Section 3: Evidence index
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "3. "+t("section3_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 9)
+	pdf.SetFont(fontFamily, "", 9)
 	for _, e := range rep.Evidence {
 		pdf.Cell(0, 5, fmt.Sprintf("- [%s] %s (%s) %s", e.ID, e.Title, e.Type, e.URL))
 		pdf.Ln(5)
@@ -140,10 +168,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(4)
 
 	// Section 4: Timeline
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "4. "+t("section4_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 9)
+	pdf.SetFont(fontFamily, "", 9)
 	for _, ev := range rep.Timeline {
 		pdf.Cell(0, 5, fmt.Sprintf("- %s: %s -- %s (ref: %s)", ev.Timestamp, ev.Title, ev.Description, ev.SourceRef))
 		pdf.Ln(5)
@@ -151,10 +179,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(4)
 
 	// Section 5: Cause analysis
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "5. "+t("section5_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 9)
+	pdf.SetFont(fontFamily, "", 9)
 	for _, c := range rep.CauseScores {
 		pdf.Cell(0, 5, fmt.Sprintf("- %s: %s=%.2f %s=%.2f", c.Label, t("score"), c.Score, t("confidence"), c.Confidence))
 		pdf.Ln(5)
@@ -162,10 +190,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(4)
 
 	// Section 6: Core philosophy
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "6. "+t("section6_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 10)
+	pdf.SetFont(fontFamily, "", 10)
 	for _, p := range rep.CorePhilosophy {
 		pdf.Cell(0, 5, fmt.Sprintf("- %s", p))
 		pdf.Ln(5)
@@ -173,10 +201,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(4)
 
 	// Section 7: Reincarnation architecture
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "7. "+t("section7_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 10)
+	pdf.SetFont(fontFamily, "", 10)
 	pdf.Cell(0, 5, fmt.Sprintf("%s: %s", t("target_stack"), rep.ReincarnationPlan.TargetStack))
 	pdf.Ln(5)
 	for _, layer := range rep.ReincarnationPlan.Architecture {
@@ -186,10 +214,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(4)
 
 	// Section 8: 90-day roadmap
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "8. "+t("section8_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 9)
+	pdf.SetFont(fontFamily, "", 9)
 	for _, m := range rep.Next90Days {
 		pdf.Cell(0, 5, fmt.Sprintf("- %s: %s (%s)", m.DayRange, m.Objective, strings.Join(m.Deliverables, ", ")))
 		pdf.Ln(5)
@@ -197,10 +225,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(4)
 
 	// Section 9: Risks
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "9. "+t("section9_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 9)
+	pdf.SetFont(fontFamily, "", 9)
 	for _, rk := range rep.Risks {
 		pdf.Cell(0, 5, fmt.Sprintf("- [%s] %s -- %s: %s", rk.Severity, rk.Title, t("stop_loss_action"), rk.StopLossAction))
 		pdf.Ln(5)
@@ -208,10 +236,10 @@ func (r *Renderer) RenderPDF(rep NecropsyReport, locale string) ([]byte, error) 
 	pdf.Ln(4)
 
 	// Section 10: Attribution
-	pdf.SetFont("Arial", "B", 12)
+	pdf.SetFont(fontFamily, "B", 12)
 	pdf.Cell(0, 8, "10. "+t("section10_title"))
 	pdf.Ln(8)
-	pdf.SetFont("Arial", "", 10)
+	pdf.SetFont(fontFamily, "", 10)
 	pdf.Cell(0, 6, t("sources_include"))
 	pdf.Ln(6)
 	pdf.Cell(0, 6, t("evidence_traceable"))
