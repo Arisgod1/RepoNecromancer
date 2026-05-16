@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -71,8 +72,8 @@ func newReportCommand() *cobra.Command {
 				rep.ReincarnationPlan = pr.plan
 				rep.Risks = pr.risks
 				rep.Next90Days = pr.milestones
-			default:
-				// Plan goroutine not ready yet, it will use fallback rule-based plan
+			case <-time.After(30 * time.Second):
+				// Timeout: plan generation took too long, use fallback rule-based plan
 			}
 			rep.QueryMetadata = report.QueryMetadata{
 				SessionID:  bundle.QueryResult.SessionID,

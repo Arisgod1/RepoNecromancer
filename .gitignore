@@ -40,6 +40,7 @@ vendor/
 .cache-/
 out/
 output/
+reports/
 dist/
 build/
 
